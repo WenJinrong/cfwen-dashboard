@@ -538,9 +538,17 @@
   .hcard.active .analysis.single, .hcard.hot .analysis.single { display:block; }
   /* V16C-END */
 /* V17B-START */
-  /* V17B · 展开卡顶部 KV 不再裁成 104px 薄片，显示完整 KV（contain，封顶 280px） */
+  /* V17B · 展开卡顶部 KV 不再裁成 104px 薄片，显示完整 KV（contain，封顶 280px）
+     ⚠️ 2026-08-31 V33 修：原封顶是绝对 px，而展开卡的 max-height 是 vh 基准的，两者不同步。
+        Ctrl+滚轮放大页面时视口 CSS 高度变小 → 卡变小，但 KV 恒为 280px×fit，占比从 24% 一路涨到
+        42%（200% 缩放实测 KV 174px / 卡 416px），把下方 .h-body（详情 + 分析）挤到只剩 158px。
+        改为「280px 与 21vh 取小」：21vh 在 100%/125% 下都不触发，保持原样（225 / 174px 不变），
+        150% 起才生效，让 KV 随视口等比缩小。
+        ⚠️ 必须除以 --fit：zoom 子树里 vh 不随缩放（见 V32 注释），不除的话 21vh 实际只占视口 17%。
+        ⚠️ 切勿改成 flex:0 1 auto 让它参与收缩——.h-body 的 flex-basis 是内容实高（可达 2560 CSS px），
+           按 shrink×basis 分配时 KV 会被压到 18px。KV 就该是 flex:0 0 auto，靠上限控制。 */
   .hcard.active .h-thumb, .hcard.hot .h-thumb {
-    height:auto; max-height:280px; width:100%;
+    height:auto; max-height: min(280px, calc(21vh / var(--fit))); width:100%;
     object-fit:contain; background:var(--bg-deep);
     border-radius:2px; margin:6px 0 10px;
     cursor:zoom-in;
