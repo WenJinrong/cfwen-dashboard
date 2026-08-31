@@ -67,9 +67,10 @@
   .hero-meta { margin-top:20px; display:flex; gap:20px; align-items:center; flex-wrap:wrap; font-family:var(--mono); font-size:11.5px; color:var(--sub); }
   .hero-meta a { color:var(--amber-text); text-decoration:none; border-bottom:1px solid rgba(233,162,59,.4); }
   .hero-meta a:hover { color:#fff; }
+  /* 注意：此处不能加 overflow:hidden —— ::before 标签在 top:-9px（容器外），会被裁掉上半截 */
   .hero-readout {
     background:var(--panel2); border:1px solid var(--line); border-radius:5px;
-    position:relative; overflow:hidden;
+    position:relative;
   }
   .hero-readout::before { content:"READOUT // 全量读数"; position:absolute; top:-9px; left:14px; background:var(--panel); padding:0 6px; font-family:var(--mono); font-size:9px; letter-spacing:1.5px; color:var(--sub); z-index:1; }
   .ro-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
@@ -79,25 +80,29 @@
   .ro.cfm .ro-num { color:var(--cfm); }
   .ro.cfhd .ro-num { color:var(--cfhd); }
   .ro-lbl { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.5px; color:var(--sub); margin-top:6px; }
-  /* V29B · 类型构成环形饼图（总体 + CF / CFM / CFHD） */
-  .donut-row { display:grid; grid-template-columns:repeat(4,1fr); gap:0; border-top:1px solid var(--line); }
-  .dn-cell { padding:12px 4px 9px; text-align:center; border-right:1px solid var(--line-soft); }
-  .dn-cell:last-child { border-right:none; }
-  .dn-box { width:100%; max-width:70px; aspect-ratio:1/1; margin:0 auto; }
+  /* V29E · 类型构成：标题区内独立面板，四枚饼图横向排开，图例跟在各自饼图下方（竖向）以压缩高度 */
+  .type-panel { flex:none; position:relative; padding:20px 14px 13px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:5px; }
+  .type-panel-t { position:absolute; top:-9px; left:14px; background:var(--panel); padding:0 6px;
+    font-family:var(--mono); font-size:10px; letter-spacing:1.5px; color:var(--sub); z-index:1; }
+  .donut-row { display:grid; grid-template-columns:repeat(4,auto); gap:0 16px; }
+  .dn-cell { text-align:center; }
+  .dn-box { width:74px; height:74px; margin:0 auto; }
   .dn { display:block; width:100%; height:100%; }
-  .dn-seg { transition:opacity .15s ease; cursor:default; }
+  .dn-seg { transition:opacity .15s ease; cursor:pointer; }
   .dn-cell:hover .dn-seg { opacity:.35; }
   .dn-seg:hover { opacity:1; }
-  .dn-num { font-family:var(--mono); font-size:16px; font-weight:700; fill:var(--ink); }
-  .dn-cell.cf .dn-num { fill:var(--cf); }
-  .dn-cell.cfm .dn-num { fill:var(--cfm); }
-  .dn-cell.cfhd .dn-num { fill:var(--cfhd); }
-  .dn-cap { font-family:var(--mono); font-size:10.5px; letter-spacing:.4px; color:var(--sub); margin-top:6px; white-space:nowrap; }
-  .donut-legend { border-top:1px solid var(--line-soft); padding:9px 12px 10px;
-    display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; align-items:center; }
-  .dn-lg-t { grid-column:1 / -1; font-family:var(--mono); font-size:10.5px; letter-spacing:1px; color:var(--sub); }
-  .dn-lg { display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:11px; color:var(--ink2); white-space:nowrap; }
+  /* 圆心数字统一为 --ink：不按端着色，颜色只属于「类别」这一个维度，避免两套配色打架 */
+  .dn-num { font-family:var(--mono); font-size:17px; font-weight:700; fill:var(--ink); }
+  .dn-cap { font-family:var(--mono); font-size:11px; letter-spacing:.4px; color:var(--sub); margin-top:5px; white-space:nowrap; }
+  /* V29I · 数值改为悬停查看：饼图下方不再常驻数值行，类别名由面板底部共享一行给出 */
+  .dn-lg { display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:10.5px; color:var(--ink2); white-space:nowrap; }
   .dn-lg i { width:7px; height:7px; border-radius:1px; display:inline-block; flex:none; }
+  .type-legend { margin-top:9px; padding-top:8px; border-top:1px solid var(--line-soft);
+    display:flex; gap:5px 14px; justify-content:center; flex-wrap:wrap; }
+  .type-legend .dn-lg { color:var(--sub); }
+  /* 悬停扇区时，端名临时显示为类别名并提亮 */
+  .dn-cap.hover { color:var(--ink); }
 
   /* ===== 工具条 ===== */
   .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:20px;
@@ -461,10 +466,12 @@
     border-bottom:1px solid var(--line-sub); font-weight:400; }
   /* V29C · 胶片数字编号：从左到右倒序（最左=最新=最大号），胶囊徽章确保可读 */
   .h-date-t { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .h-idx { flex:none; font-family:var(--mono); font-size:11px; letter-spacing:.5px; font-weight:700;
+  .h-idx { flex:none; font-family:var(--mono); font-size:12.5px; letter-spacing:.5px; font-weight:700;
     color:var(--ink); background:var(--panel3); border:1px solid var(--line-sub);
-    border-radius:2px; padding:0 4px; line-height:1.5; }
+    border-radius:2px; padding:1px 5px; line-height:1.45; }
   .hcard.active .h-idx, .hcard.hot .h-idx { color:var(--bg-deep); background:var(--accent); border-color:var(--accent); }
+  /* V29F · 展开态：右上角关闭按钮(距右 8~32px)会与编号(距右 16px)重叠，给日期行让出避让位 */
+  .hcard.active .h-date, .hcard.hot .h-date { padding-right:34px; }
   /* 标题 = 超粗黑体（视觉锚点，参考图的大字号中文） */
   .h-theme { font-size:16px; font-weight:900; letter-spacing:-.5px; color:var(--fg); margin:8px 0 8px; line-height:1.2;
     text-transform:uppercase; }
@@ -610,10 +617,11 @@
   }
   .hero-readout .ro:nth-child(2n) { border-right:none; }
   .hero-readout .ro:nth-child(n+3) { border-bottom:none; }
-  .hero-readout .ro-num { color:var(--amber-text); }
-  .hero-readout .ro.cf .ro-num { color:var(--cf); }
-  .hero-readout .ro.cfm .ro-num { color:var(--cfm); }
-  .hero-readout .ro.cfhd .ro-num { color:var(--cfhd); }
+  /* V29J · 四个统计数字统一浅白，不按端着色（与饼图「颜色只属于类别」保持一致） */
+  .hero-readout .ro-num,
+  .hero-readout .ro.cf .ro-num,
+  .hero-readout .ro.cfm .ro-num,
+  .hero-readout .ro.cfhd .ro-num { color:var(--ink); }
   @media (max-width:760px){
     .dn-box { max-width:60px; }
     .dn-cap { font-size:8.5px; }
@@ -651,9 +659,13 @@
           <div class="ro cfm"><span class="ro-num" id="roCFM">—</span><span class="ro-lbl">CFM 手游</span></div>
           <div class="ro cfhd"><span class="ro-num" id="roCFHD">—</span><span class="ro-lbl">CFHD 竞技</span></div>
         </div>
-        <div class="donut-row" id="donutRow"></div>
-        <div class="donut-legend" id="donutLegend"></div>
       </div>
+      <!-- V29E · 类型构成：与四宫格并排放在标题区内，四枚饼图横向排开，不额外增加页面高度 -->
+      <section class="type-panel">
+        <span class="type-panel-t">TYPE MIX // 类型构成</span>
+        <div class="donut-row" id="donutRow"></div>
+        <div class="type-legend" id="typeLegend"></div>
+      </section>
     </div>
   </header>
 
@@ -1169,31 +1181,45 @@ document.addEventListener('keydown',e=>{
   }
 });
 /* V29B · 全量读数：类型构成环形饼图（总体 + CF / CFM / CFHD），数字由 DATA 实时统计，不再硬编码 */
-const DN_COLORS = ['#e8b820','#4aa6dd','#e0584a'];
+/* V29G · 固定五类归并：71 种原始类型一律归入「新皮肤 / 新武器 / 大型版本更新 / 福利 / 其他」，
+   顺序即优先级（同时命中多个关键词时取靠前者），颜色随类别固定，四个饼图共用同一套配色 */
+const DN_CATS = [
+  { k:'新皮肤',       kw:['新皮肤','皮肤'] },
+  { k:'新武器',       kw:['新武器','武器'] },
+  { k:'大型版本更新', kw:['大型版本更新'] },
+  { k:'福利',         kw:['福利'] },
+  { k:'其他',         kw:null }
+];
+const DN_COLORS = ['#e8b820','#5fbf8f','#4aa6dd','#e669a4'];
 const DN_OTHER  = '#8d8a82';
 function dnGameKey(r){
   var g=(r.game||'').toLowerCase();
   return g.indexOf('cfhd')>=0?'cfhd':(g.indexOf('cfm')>=0?'cfm':(g.indexOf('cf')>=0?'cf':'other'));
 }
-function dnTypeStats(scope, topN){
+function dnCat(type){
+  var t=(type||'').toString().trim();
+  for(var i=0;i<DN_CATS.length;i++){
+    var c=DN_CATS[i], kw=c.kw;
+    if(!kw) return c.k;
+    for(var j=0;j<kw.length;j++){ if(t.indexOf(kw[j])>=0) return c.k; }
+  }
+  return '其他';
+}
+function dnTypeStats(scope){
   var m={};
+  for(var i=0;i<DN_CATS.length;i++) m[DN_CATS[i].k]=0;
   for(var i=0;i<DATA.length;i++){
     var r=DATA[i];
     if(scope!=='all' && dnGameKey(r)!==scope) continue;
-    var t=(r.type||'').toString().trim()||'未分类';
-    m[t]=(m[t]||0)+1;
+    m[dnCat(r.type)]++;
   }
-  var arr=Object.keys(m).map(function(k){ return {k:k, v:m[k]}; });
-  arr.sort(function(a,b){ return b.v-a.v || a.k.localeCompare(b.k); });
-  var total=arr.reduce(function(s,x){ return s+x.v; },0);
-  var head=arr.slice(0, topN);
-  var rest=arr.slice(topN);
-  if(rest.length){
-    head.push({ k:'其他', v:rest.reduce(function(s,x){ return s+x.v; },0), other:true });
-  }
-  return { items:head, total:total, kinds:arr.length };
+  var items=DN_CATS.map(function(c){
+    return { k:c.k, v:m[c.k], other:(c.k==='其他') };
+  });
+  var total=items.reduce(function(s,x){ return s+x.v; },0);
+  return { items:items, total:total, kinds:DN_CATS.length };
 }
-function dnSvg(d){
+function dnSvg(d, scopeName){
   var R=26, C=2*Math.PI*R, cx=34, cy=34, sw=11, off=0, segs='';
   for(var i=0;i<d.items.length;i++){
     var it=d.items[i];
@@ -1202,8 +1228,10 @@ function dnSvg(d){
     var col  = it.other ? DN_OTHER : DN_COLORS[i % DN_COLORS.length];
     segs += '<circle class="dn-seg" cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="'+sw+'"'
           + ' stroke-dasharray="'+len.toFixed(2)+' '+(C-len).toFixed(2)+'" stroke-dashoffset="'+(-off).toFixed(2)+'"'
-          + ' transform="rotate(-90 '+cx+' '+cy+')">'
-          + '<title>'+esc(it.k)+' · '+it.v+' 条 · '+(frac*100).toFixed(1)+'%</title></circle>';
+          + ' transform="rotate(-90 '+cx+' '+cy+')"'
+          + ' data-k="'+esc(it.k)+'" data-v="'+it.v+'"'
+          + (it.v ? '' : ' pointer-events="none"') + '>'
+          + '<title>'+esc(scopeName+' · '+it.k)+' '+it.v+' 条 · '+(frac*100).toFixed(1)+'%</title></circle>';
     off += len;
   }
   return '<svg class="dn" viewBox="0 0 68 68" role="img">'
@@ -1211,6 +1239,24 @@ function dnSvg(d){
        + segs
        + '<text class="dn-num" x="'+cx+'" y="'+cy+'" text-anchor="middle" dominant-baseline="central">'+d.total+'</text>'
        + '</svg>';
+}
+/* V29I · 数值改为悬停查看：悬停扇区 → 圆心显示该类数量、端名临时替换为类别名 */
+function bindDonutHover(){
+  var cells=document.querySelectorAll('.dn-cell');
+  Array.prototype.forEach.call(cells, function(cell){
+    var num=cell.querySelector('.dn-num'), cap=cell.querySelector('.dn-cap');
+    if(!num||!cap) return;
+    var total=num.textContent, capText=cap.textContent;
+    Array.prototype.forEach.call(cell.querySelectorAll('.dn-seg'), function(seg){
+      var k=seg.getAttribute('data-k'), v=seg.getAttribute('data-v');
+      seg.addEventListener('mouseenter', function(){
+        num.textContent=v; cap.textContent=k; cap.classList.add('hover');
+      });
+      seg.addEventListener('mouseleave', function(){
+        num.textContent=total; cap.textContent=capText; cap.classList.remove('hover');
+      });
+    });
+  });
 }
 function buildReadout(){
   var counts={ all:DATA.length, cf:0, cfm:0, cfhd:0 };
@@ -1222,20 +1268,20 @@ function buildReadout(){
   var row=document.getElementById('donutRow');
   if(row){
     row.innerHTML = scopes.map(function(s){
-      var d=dnTypeStats(s[0], 3);
-      return '<div class="dn-cell '+s[0]+'" title="'+s[1]+' 共 '+d.total+' 条 · '+d.kinds+' 种类型">'
-           + '<div class="dn-box">'+dnSvg(d)+'</div>'
+      var d=dnTypeStats(s[0]);
+      return '<div class="dn-cell '+s[0]+'" title="'+s[1]+' 共 '+d.total+' 条（悬停扇区查看各类数量）">'
+           + '<div class="dn-box">'+dnSvg(d, s[1])+'</div>'
            + '<div class="dn-cap">'+s[1]+'</div>'
            + '</div>';
     }).join('');
-  }
-  var lg=document.getElementById('donutLegend');
-  if(lg){
-    var all=dnTypeStats('all',3);
-    lg.innerHTML = '<span class="dn-lg-t">总体 TOP'+all.items.length+'</span>' + all.items.map(function(it,i){
-      var col = it.other ? DN_OTHER : DN_COLORS[i % DN_COLORS.length];
-      return '<span class="dn-lg" title="'+esc(it.k)+'"><i style="background:'+col+'"></i>'+esc(it.k)+' '+it.v+'</span>';
-    }).join('');
+    // V29J · 类别名共享一行，纯文字不带色块；数值改为悬停饼图扇区查看
+    var tl=document.getElementById('typeLegend');
+    if(tl){
+      tl.innerHTML = DN_CATS.map(function(c){
+        return '<span class="dn-lg">'+esc(c.k)+'</span>';
+      }).join('');
+    }
+    bindDonutHover();
   }
 }
 buildReadout();
