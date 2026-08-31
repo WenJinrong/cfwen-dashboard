@@ -556,7 +556,11 @@
   /* V27B · 仅激活卡封顶内滚 + 深色滚动条 + 配图统一 */
   .hcard { display: flex; flex-direction: column; }
   .hcard.active { max-height: calc(100vh - 200px); width: min(1100px, 90vw); }
-  .hcard .h-date, .hcard .h-theme, .h-card .h-meta, .hcard .h-thumb { flex: 0 0 auto; }
+  /* ⚠️ 2026-08-31 修：此处原写 `.h-card .h-meta`（下划线拼写错误，实际类名是 .hcard），
+     导致 .h-meta 是这一列里【唯一】没拿到 flex:0 0 auto 的项 → 默认 flex-shrink:1。
+     展开卡在矮视口下（如 566px 高的预览面板，max-height 仅 366px）空间不够时，
+     只有标签行被压缩：实测渲染高 7.7~9.4px 而内容高 22px，标签被切掉一半。 */
+  .hcard .h-date, .hcard .h-theme, .hcard .h-meta, .hcard .h-thumb { flex: 0 0 auto; }
   .h-body { display: none !important; grid-template-rows: auto !important; }
   .hcard.active .h-body {
     display: block !important; grid-template-rows: auto !important;
@@ -641,7 +645,11 @@
   .hcard.active .h-thumb-ph, .hcard.hot .h-thumb-ph { display:none; }
   /* 展开态还原标题/标签的自然高度 */
   .hcard.active .h-theme, .hcard.hot .h-theme { height:auto; min-height:0; max-height:none; -webkit-line-clamp:unset; display:block; }
-  .hcard.active .h-meta, .hcard.hot .h-meta { height:auto; min-height:0; max-height:none; overflow:visible; flex-wrap:wrap; }
+  /* ⚠️ min-height 必须是 auto 不能是 0：flex item 的 min-height:auto = 内容最小尺寸，
+     会在空间不足时兜底保护标签行不被压扁。原写 min-height:0 等于主动关掉这层保护，
+     与上面 flex:0 0 auto 的 typo 叠加，才出现「展开后标签被切一半」。
+     让出空间的任务交给 .h-body（flex:1 1 auto + min-height:0 的内滚区），不要牺牲标签行。 */
+  .hcard.active .h-meta, .hcard.hot .h-meta { height:auto; min-height:auto; max-height:none; overflow:visible; flex-wrap:wrap; }
   /* 窄卡(≤760px, 卡片 250px)收紧标签间距，避免第 4 个计数徽章被 nowrap 裁掉 */
   @media (max-width:760px){
     .hcard:not(.active):not(.hot) .h-meta { gap:5px; }
