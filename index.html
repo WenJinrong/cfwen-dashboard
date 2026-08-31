@@ -612,8 +612,9 @@
 /* V30A-START */
   /* V30A · 折叠态卡片等高：日期 / 标题 / 标签 / 缩略图 四块全部定高，
      无 KV 的卡补一个虚线占位框，避免 245 / 110 / 129 / 264 / 147 五种高度混排 */
-  /* 278 = 内容实高；再加 12 给底部「点击展开」提示留出净空，避免压住缩略图底边 */
-  .hcard:not(.active):not(.hot) { height:290px; padding-bottom:28px; }
+  /* 260 = 桌面统一高度：内容实高约 215 + padding-top 14 + padding-bottom 28 + 边框 2 ≈ 259；
+     padding-bottom 保持 28 给底部「点击展开」提示留出净空，避免压住缩略图底边 */
+  .hcard:not(.active):not(.hot) { height:260px; padding-bottom:28px; }
   /* 标题固定 2 行，超出省略（展开态恢复完整显示） */
   .hcard:not(.active):not(.hot) .h-theme {
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
@@ -623,9 +624,9 @@
   .hcard:not(.active):not(.hot) .h-meta { height:22px; min-height:22px; max-height:22px; overflow:hidden; flex-wrap:nowrap; }
   .hcard:not(.active):not(.hot) .h-meta .tag { flex:none; }
   /* 缩略图槽位恒定 130px */
-  .hcard:not(.active):not(.hot) .h-thumb { height:130px; min-height:130px; max-height:130px; }
+  .hcard:not(.active):not(.hot) .h-thumb { height:100px; min-height:100px; max-height:100px; }
   /* 无 KV 的卡片：等高等宽的虚线空槽（斜纹底 + 说明文字），视觉上读成「未收录」而非「塌了」 */
-  .h-thumb-ph { width:100%; height:130px; min-height:130px; margin:4px 0 8px; border-radius:2px;
+  .h-thumb-ph { width:100%; height:100px; min-height:100px; margin:4px 0 8px; border-radius:2px;
     border:1px dashed var(--line-bright); background:
       repeating-linear-gradient(135deg, rgba(255,255,255,.022) 0 7px, rgba(0,0,0,0) 7px 14px),
       var(--bg-deep);
