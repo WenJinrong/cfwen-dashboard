@@ -574,6 +574,8 @@
   .detail { max-height: 40vh; overflow: auto; }
   .ana-box { display: flex; flex-direction: column; }
   .ana-box p { max-height: 35vh; overflow: auto; transition: max-height .2s ease; }
+  /* V31 · 舆情/分析重点加粗：暖金色高亮 + 700 字重，在灰阶分析文中突出关键结论 */
+  .ana-box p strong, .detail strong { color: var(--amber-text); font-weight: 700; }
   .ana-box.collapsed .h-label, .ana-box.collapsed p,
   .ana-box.collapsed .img-gallery, .ana-box.collapsed .video-player { display: none; }
   .ana-toggle {
@@ -749,6 +751,12 @@ function fmtType(t){ return t || '未分类'; }
 function esc(s){
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+/* V31 · 轻量 Markdown：转义后把 **重点** 渲染为 <strong>。
+   仅用于我们自己写入的分析文本（detail / pv_analysis / kv_analysis），数据非外部注入；
+   先 esc 再替换，保证 < > & 不破坏页面、也不被注入。 */
+function fmt(s){
+  return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
 function bvidOf(u){ const m=u.match(/BV[\w]+/); return m?m[0]:''; }
 
 /* 把时间文本解析成 [年,月,日] 可比较元组（与 Python parse_time 对齐） */
@@ -856,10 +864,10 @@ function cardBody(r){
   const title=r.theme||r.time||'未命名活动';
   const pvHas=(pvLinks.length||r.pv||r.pv_analysis||pvImgs.length);
   const kvHas=(kvImgs.length||r.kv||r.kv_analysis);
-  const pvBox=pvHas?('<div class="ana-box pv">'+'<h4><span class="dot"></span>PV 素材<span class="ana-toggle" onclick="toggleAna(this)">收起 ▴</span></h4>'+videoHtml(pvLinks)+(r.pv&&!pvLinks.length?'<div style="font-size:12px;color:var(--sub);margin-top:6px">'+esc(r.pv)+'</div>':'')+(r.pv_analysis?'<div class="h-label">PV 分析</div><p>'+esc(r.pv_analysis)+'</p>':'')+galleryHtml(pvImgs,'pv',ci,activityImgs.length)+'</div>'):'';
-  const kvBox=kvHas?('<div class="ana-box kv">'+'<h4><span class="dot"></span>KV 素材<span class="ana-toggle" onclick="toggleAna(this)">收起 ▴</span></h4>'+galleryHtml(kvImgs,'kv',ci,activityImgs.length+pvImgs.length)+(r.kv&&!kvImgs.length?'<div style="font-size:12px;color:var(--sub);margin-top:6px">'+esc(r.kv)+'</div>':'')+(r.kv_analysis?'<div class="h-label">KV 分析</div><p>'+esc(r.kv_analysis)+'</p>':'')+'</div>'):'';
+  const pvBox=pvHas?('<div class="ana-box pv">'+'<h4><span class="dot"></span>PV 素材<span class="ana-toggle" onclick="toggleAna(this)">收起 ▴</span></h4>'+videoHtml(pvLinks)+(r.pv&&!pvLinks.length?'<div style="font-size:12px;color:var(--sub);margin-top:6px">'+esc(r.pv)+'</div>':'')+(r.pv_analysis?'<div class="h-label">PV 分析</div><p>'+fmt(r.pv_analysis)+'</p>':'')+galleryHtml(pvImgs,'pv',ci,activityImgs.length)+'</div>'):'';
+  const kvBox=kvHas?('<div class="ana-box kv">'+'<h4><span class="dot"></span>KV 素材<span class="ana-toggle" onclick="toggleAna(this)">收起 ▴</span></h4>'+galleryHtml(kvImgs,'kv',ci,activityImgs.length+pvImgs.length)+(r.kv&&!kvImgs.length?'<div style="font-size:12px;color:var(--sub);margin-top:6px">'+esc(r.kv)+'</div>':'')+(r.kv_analysis?'<div class="h-label">KV 分析</div><p>'+fmt(r.kv_analysis)+'</p>':'')+'</div>'):'';
   const analysis=(pvBox||kvBox)?('<div class="analysis'+(pvBox&&kvBox?'':' single')+'">'+pvBox+kvBox+'</div>'):'';
-  return (r.detail&&r.detail!==title?'<div class="detail">'+esc(r.detail)+'</div>':'')
+  return (r.detail&&r.detail!==title?'<div class="detail">'+fmt(r.detail)+'</div>':'')
     + (activityImgs.length?galleryHtml(activityImgs,'act',ci,0):'')
     + analysis;
 }
