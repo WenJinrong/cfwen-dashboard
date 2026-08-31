@@ -68,19 +68,36 @@
   .hero-meta a { color:var(--amber-text); text-decoration:none; border-bottom:1px solid rgba(233,162,59,.4); }
   .hero-meta a:hover { color:#fff; }
   .hero-readout {
-    display:grid; grid-template-columns:repeat(3,minmax(96px,1fr)); gap:0;
     background:var(--panel2); border:1px solid var(--line); border-radius:5px;
-    position:relative;
+    position:relative; overflow:hidden;
   }
   .hero-readout::before { content:"READOUT // 全量读数"; position:absolute; top:-9px; left:14px; background:var(--panel); padding:0 6px; font-family:var(--mono); font-size:9px; letter-spacing:1.5px; color:var(--sub); z-index:1; }
-  .ro { text-align:center; padding:18px 8px 14px; border-right:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); }
-  .ro:nth-child(3n) { border-right:none; }
-  .ro:nth-child(n+4) { border-bottom:none; }
+  .ro-grid { display:grid; grid-template-columns:1fr 1fr; gap:0; }
+  .ro { text-align:center; padding:15px 8px 13px; }
   .ro-num { display:block; font-family:var(--mono); font-size:26px; font-weight:700; color:var(--ink); letter-spacing:-.5px; }
   .ro.cf .ro-num { color:var(--cf); }
   .ro.cfm .ro-num { color:var(--cfm); }
   .ro.cfhd .ro-num { color:var(--cfhd); }
   .ro-lbl { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.5px; color:var(--sub); margin-top:6px; }
+  /* V29B · 类型构成环形饼图（总体 + CF / CFM / CFHD） */
+  .donut-row { display:grid; grid-template-columns:repeat(4,1fr); gap:0; border-top:1px solid var(--line); }
+  .dn-cell { padding:12px 4px 9px; text-align:center; border-right:1px solid var(--line-soft); }
+  .dn-cell:last-child { border-right:none; }
+  .dn-box { width:100%; max-width:70px; aspect-ratio:1/1; margin:0 auto; }
+  .dn { display:block; width:100%; height:100%; }
+  .dn-seg { transition:opacity .15s ease; cursor:default; }
+  .dn-cell:hover .dn-seg { opacity:.35; }
+  .dn-seg:hover { opacity:1; }
+  .dn-num { font-family:var(--mono); font-size:16px; font-weight:700; fill:var(--ink); }
+  .dn-cell.cf .dn-num { fill:var(--cf); }
+  .dn-cell.cfm .dn-num { fill:var(--cfm); }
+  .dn-cell.cfhd .dn-num { fill:var(--cfhd); }
+  .dn-cap { font-family:var(--mono); font-size:10.5px; letter-spacing:.4px; color:var(--sub); margin-top:6px; white-space:nowrap; }
+  .donut-legend { border-top:1px solid var(--line-soft); padding:9px 12px 10px;
+    display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; align-items:center; }
+  .dn-lg-t { grid-column:1 / -1; font-family:var(--mono); font-size:10.5px; letter-spacing:1px; color:var(--sub); }
+  .dn-lg { display:inline-flex; align-items:center; gap:4px; font-family:var(--mono); font-size:11px; color:var(--ink2); white-space:nowrap; }
+  .dn-lg i { width:7px; height:7px; border-radius:1px; display:inline-block; flex:none; }
 
   /* ===== 工具条 ===== */
   .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:20px;
@@ -440,8 +457,14 @@
   .h-close:hover { background:var(--accent); color:#0e0f12; border-color:var(--accent); transform:rotate(90deg); }
   /* 日期 = 等宽微标（小字、全大写、低对比） */
   .h-date { font-family:var(--mono); font-size:10px; color:var(--fg-dim);
-    letter-spacing:1.5px; text-transform:uppercase; display:inline-block; padding:1px 0;
+    letter-spacing:1.5px; text-transform:uppercase; display:flex; align-items:baseline; gap:8px; padding:1px 0;
     border-bottom:1px solid var(--line-sub); font-weight:400; }
+  /* V29C · 胶片数字编号：从左到右倒序（最左=最新=最大号），胶囊徽章确保可读 */
+  .h-date-t { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .h-idx { flex:none; font-family:var(--mono); font-size:11px; letter-spacing:.5px; font-weight:700;
+    color:var(--ink); background:var(--panel3); border:1px solid var(--line-sub);
+    border-radius:2px; padding:0 4px; line-height:1.5; }
+  .hcard.active .h-idx, .hcard.hot .h-idx { color:var(--bg-deep); background:var(--accent); border-color:var(--accent); }
   /* 标题 = 超粗黑体（视觉锚点，参考图的大字号中文） */
   .h-theme { font-size:16px; font-weight:900; letter-spacing:-.5px; color:var(--fg); margin:8px 0 8px; line-height:1.2;
     text-transform:uppercase; }
@@ -451,17 +474,20 @@
     border-radius:2px; padding:2px 7px; letter-spacing:.5px; text-transform:uppercase; }
   .tag-game { color:var(--accent); border-color:var(--accent); background:var(--accent-dim); font-weight:600; }
   .entry-counts .ci, .entry-counts .cv { color:var(--accent); font-family:var(--mono); font-weight:700; font-size:11px; }
-  .h-thumb { width:100%; height:130px; object-fit:contain; background:var(--bg-deep); border-radius:2px; margin:4px 0 8px; cursor:zoom-in;
+  .h-thumb { width:100%; height:130px; object-fit:contain; background:var(--bg-deep); border-radius:2px; margin:4px 0 8px; cursor:pointer;
     border:1px solid var(--line-sub); }
   .h-body { display:grid; grid-template-rows:0fr; transition:grid-template-rows .45s cubic-bezier(.16,1,.3,1); color:var(--fg-dim); }
   .h-body > div { overflow:hidden; min-height:0; }
   .hcard.active .h-body, .hcard.hot .h-body { grid-template-rows:1fr; }
   /* 底部仪表盘 = 精密仪器（细线弧 + 荧光黄指针/刻度） */
-  .dial-wrap { position:relative; width:min(1100px,96vw); margin:80px auto 8px; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
-  .dial-wrap.dragging { cursor:grabbing; }
+  /* V29D · 抓取范围收紧：cursor:grab 与命中判定都只落在圆环本体附近，读数/提示文字区不再误触 */
+  .dial-wrap { position:relative; width:min(1100px,96vw); margin:80px auto 8px; touch-action:none; user-select:none; -webkit-user-select:none; }
+  .dial-wrap.dragging, .dial-wrap.dragging * { cursor:grabbing !important; }
   .dial { display:block; width:100%; height:220px; overflow:visible; }
   .dial-base { fill:none; stroke:var(--line-sub); stroke-width:1; opacity:.35; }
   .dial-ring { fill:none; stroke:var(--line-bright); stroke-width:28; stroke-linecap:round; opacity:.55; }
+  /* 透明加粗的抓取带：只在这一圈上手型光标生效，其余区域为默认光标 */
+  .dial-grab { fill:none; stroke:rgba(0,0,0,0); stroke-width:62; stroke-linecap:round; pointer-events:stroke; cursor:grab; }
   .dial-handle { fill:var(--accent); stroke:var(--bg-deep); stroke-width:3; filter:drop-shadow(0 0 6px rgba(212,255,0,.65)); cursor:grab; }
   .dial-stage { padding-top:79px; }
   .dial-readout { position:absolute; left:50%; top:0; transform:translateX(-50%);
@@ -502,6 +528,7 @@
     height:auto; max-height:280px; width:100%;
     object-fit:contain; background:var(--bg-deep);
     border-radius:2px; margin:6px 0 10px;
+    cursor:zoom-in;
   }
 /* V17B-END */
 
@@ -575,6 +602,24 @@
   .hcard.hot .h-body > div > .analysis { grid-column: 1 / -1 !important; }
   /* V27C-END */
 
+/* V29B-START */
+  /* V29B · READOUT 重排：4 个总数 2×2 + 4 个类型环形饼图（覆盖上方 ARK 段给 .ro 加的四周边框，避免出现双线） */
+  .hero-readout .ro {
+    border:none; border-right:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft);
+    background:transparent;
+  }
+  .hero-readout .ro:nth-child(2n) { border-right:none; }
+  .hero-readout .ro:nth-child(n+3) { border-bottom:none; }
+  .hero-readout .ro-num { color:var(--amber-text); }
+  .hero-readout .ro.cf .ro-num { color:var(--cf); }
+  .hero-readout .ro.cfm .ro-num { color:var(--cfm); }
+  .hero-readout .ro.cfhd .ro-num { color:var(--cfhd); }
+  @media (max-width:760px){
+    .dn-box { max-width:60px; }
+    .dn-cap { font-size:8.5px; }
+  }
+/* V29B-END */
+
 </style>
 </head>
 <body>
@@ -600,12 +645,14 @@
         </div>
       </div>
       <div class="hero-readout">
-        <div class="ro"><span class="ro-num">279</span><span class="ro-lbl">活动总数</span></div>
-        <div class="ro cf"><span class="ro-num">102</span><span class="ro-lbl">CF 端游</span></div>
-        <div class="ro cfm"><span class="ro-num">85</span><span class="ro-lbl">CFM 手游</span></div>
-        <div class="ro cfhd"><span class="ro-num">91</span><span class="ro-lbl">CFHD 竞技</span></div>
-        <div class="ro"><span class="ro-num">145</span><span class="ro-lbl">含 PV 视频</span></div>
-        <div class="ro"><span class="ro-num">217</span><span class="ro-lbl">含 KV 图片</span></div>
+        <div class="ro-grid">
+          <div class="ro"><span class="ro-num" id="roTotal">—</span><span class="ro-lbl">活动总数</span></div>
+          <div class="ro cf"><span class="ro-num" id="roCF">—</span><span class="ro-lbl">CF 端游</span></div>
+          <div class="ro cfm"><span class="ro-num" id="roCFM">—</span><span class="ro-lbl">CFM 手游</span></div>
+          <div class="ro cfhd"><span class="ro-num" id="roCFHD">—</span><span class="ro-lbl">CFHD 竞技</span></div>
+        </div>
+        <div class="donut-row" id="donutRow"></div>
+        <div class="donut-legend" id="donutLegend"></div>
       </div>
     </div>
   </header>
@@ -773,7 +820,7 @@ function toggleAna(el){
   var col = box.classList.toggle('collapsed');
   el.textContent = col ? '展开 ▾' : '收起 ▴';
 }
-function tlNode(r, i){
+function tlNode(r, i, total){
   var d=(typeof i==='number')?Math.min(i,20)*12:0;
   const idx=DATA.indexOf(r);
   const title=r.theme||r.time||'未命名活动';
@@ -786,7 +833,9 @@ function tlNode(r, i){
   const panelVar='--panel'+_gi;
   return '<div class="hcard g-'+gkey+'" data-idx="'+idx+'" data-game="'+gkey+'" style="--accent-rot:var('+rotVar+');--panel-rot:var('+panelVar+');--d:'+d+'ms" onclick="activate(event, this)">'
     +'<span class="h-close" title="关闭" onclick="event.stopPropagation();closeCard(this)">×</span>'
-    +'<div class="h-date">'+esc(r.time||'')+'</div>'
+    +'<div class="h-date"><span class="h-date-t">'+esc(r.time||'')+'</span>'
+    +'<span class="h-idx" title="位次 '+(typeof total==='number'?total-i:idx+1)+' / '+(typeof total==='number'?total:DATA.length)+'">'
+    +String(typeof total==='number'?(total-i):(idx+1)).padStart(3,'0')+'</span></div>'
     +'<div class="h-theme">'+esc(title)+'</div>'
     +'<div class="h-meta">'
     +'<span class="tag tag-game '+gameCls+'">'+(r.game||'未分类')+'</span>'
@@ -794,13 +843,25 @@ function tlNode(r, i){
     +(c.totalImgs?'<span class="entry-counts"><span class="ci">▣ '+c.totalImgs+'</span></span>':'')
     +(c.totalVids?'<span class="entry-counts"><span class="cv">▶ '+c.totalVids+'</span></span>':'')
     +'</div>'
-    +(bestKv(r) ? '<img class="h-thumb" onclick="event.stopPropagation();lightboxUrl(this.src)" style="cursor:zoom-in" src="'+esc(bestKv(r))+'" alt="" loading="lazy" referrerpolicy="no-referrer">' : '')
+    +(bestKv(r) ? '<img class="h-thumb" onclick="thumbClick(event,this)" src="'+esc(bestKv(r))+'" alt="" loading="lazy" referrerpolicy="no-referrer">' : '')
     +'<div class="h-body" data-filled="0"></div>'
     +'</div>';
 }
 function closeCard(el){
   var c = el && el.closest ? el.closest('.hcard') : null;
   if(c){ c.classList.remove('active'); c.classList.remove('hot'); }
+}
+/* V29A · 顶部 KV 点击行为分流：折叠态 → 让事件冒泡给卡片的 activate() 展开详情页；
+   展开态 → 才打开大图灯箱（光标由 CSS 按状态区分：折叠 pointer / 展开 zoom-in） */
+function thumbClick(e, img){
+  var card = img && img.closest ? img.closest('.hcard') : null;
+  var opened = !!(card && (card.classList.contains('active') || card.classList.contains('hot')));
+  if(opened){
+    e.stopPropagation();
+    lightboxUrl(img.getAttribute('src'));
+    return;
+  }
+  /* 折叠态：不 stopPropagation，交给卡片自身的 onclick="activate(event,this)" */
 }
 function fillBody(card){
   const idx=+card.dataset.idx;
@@ -1071,12 +1132,13 @@ function render(){
   }
   function ymdC(a,b){ for(let i=0;i<3;i++){ if(a[i]!==b[i]) return a[i]-b[i]; } return 0; }
   list.sort(function(a,b){ return ymdC(sortKey(b.time), sortKey(a.time)); });
-  let cards=list.map(function(r,ii){ return tlNode(r,ii); }).join('');
+  let cards=list.map(function(r,ii){ return tlNode(r,ii,list.length); }).join('');
   const dial='<div class="dial-wrap">'
     +'<div class="dial-stage">'
     +'<svg class="dial" viewBox="0 0 1000 200" preserveAspectRatio="xMidYMax meet">'
     +'<path class="dial-base" d="M315,195 A185,185 0 0 1 685,195"/>'
     +'<path class="dial-ring" d="M315,195 A185,185 0 0 1 685,195"/>'
+    +'<path class="dial-grab" d="M315,195 A185,185 0 0 1 685,195"/>'
     +'<circle class="dial-handle" id="dialHandle" cx="315" cy="195" r="14"/>'
     +'</svg>'
     +'</div>'
@@ -1106,6 +1168,77 @@ document.addEventListener('keydown',e=>{
     if(open){ open.classList.remove('active'); open.classList.remove('hot'); }
   }
 });
+/* V29B · 全量读数：类型构成环形饼图（总体 + CF / CFM / CFHD），数字由 DATA 实时统计，不再硬编码 */
+const DN_COLORS = ['#e8b820','#4aa6dd','#e0584a'];
+const DN_OTHER  = '#8d8a82';
+function dnGameKey(r){
+  var g=(r.game||'').toLowerCase();
+  return g.indexOf('cfhd')>=0?'cfhd':(g.indexOf('cfm')>=0?'cfm':(g.indexOf('cf')>=0?'cf':'other'));
+}
+function dnTypeStats(scope, topN){
+  var m={};
+  for(var i=0;i<DATA.length;i++){
+    var r=DATA[i];
+    if(scope!=='all' && dnGameKey(r)!==scope) continue;
+    var t=(r.type||'').toString().trim()||'未分类';
+    m[t]=(m[t]||0)+1;
+  }
+  var arr=Object.keys(m).map(function(k){ return {k:k, v:m[k]}; });
+  arr.sort(function(a,b){ return b.v-a.v || a.k.localeCompare(b.k); });
+  var total=arr.reduce(function(s,x){ return s+x.v; },0);
+  var head=arr.slice(0, topN);
+  var rest=arr.slice(topN);
+  if(rest.length){
+    head.push({ k:'其他', v:rest.reduce(function(s,x){ return s+x.v; },0), other:true });
+  }
+  return { items:head, total:total, kinds:arr.length };
+}
+function dnSvg(d){
+  var R=26, C=2*Math.PI*R, cx=34, cy=34, sw=11, off=0, segs='';
+  for(var i=0;i<d.items.length;i++){
+    var it=d.items[i];
+    var frac = d.total ? it.v/d.total : 0;
+    var len  = C*frac;
+    var col  = it.other ? DN_OTHER : DN_COLORS[i % DN_COLORS.length];
+    segs += '<circle class="dn-seg" cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="'+sw+'"'
+          + ' stroke-dasharray="'+len.toFixed(2)+' '+(C-len).toFixed(2)+'" stroke-dashoffset="'+(-off).toFixed(2)+'"'
+          + ' transform="rotate(-90 '+cx+' '+cy+')">'
+          + '<title>'+esc(it.k)+' · '+it.v+' 条 · '+(frac*100).toFixed(1)+'%</title></circle>';
+    off += len;
+  }
+  return '<svg class="dn" viewBox="0 0 68 68" role="img">'
+       + '<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="'+sw+'"></circle>'
+       + segs
+       + '<text class="dn-num" x="'+cx+'" y="'+cy+'" text-anchor="middle" dominant-baseline="central">'+d.total+'</text>'
+       + '</svg>';
+}
+function buildReadout(){
+  var counts={ all:DATA.length, cf:0, cfm:0, cfhd:0 };
+  for(var i=0;i<DATA.length;i++){ var k=dnGameKey(DATA[i]); if(counts[k]!==undefined) counts[k]++; }
+  var set=function(id,v){ var el=document.getElementById(id); if(el) el.textContent=v; };
+  set('roTotal',counts.all); set('roCF',counts.cf); set('roCFM',counts.cfm); set('roCFHD',counts.cfhd);
+
+  var scopes=[['all','总体','tot'],['cf','CF','cf'],['cfm','CFM','cfm'],['cfhd','CFHD','cfhd']];
+  var row=document.getElementById('donutRow');
+  if(row){
+    row.innerHTML = scopes.map(function(s){
+      var d=dnTypeStats(s[0], 3);
+      return '<div class="dn-cell '+s[0]+'" title="'+s[1]+' 共 '+d.total+' 条 · '+d.kinds+' 种类型">'
+           + '<div class="dn-box">'+dnSvg(d)+'</div>'
+           + '<div class="dn-cap">'+s[1]+'</div>'
+           + '</div>';
+    }).join('');
+  }
+  var lg=document.getElementById('donutLegend');
+  if(lg){
+    var all=dnTypeStats('all',3);
+    lg.innerHTML = '<span class="dn-lg-t">总体 TOP'+all.items.length+'</span>' + all.items.map(function(it,i){
+      var col = it.other ? DN_OTHER : DN_COLORS[i % DN_COLORS.length];
+      return '<span class="dn-lg" title="'+esc(it.k)+'"><i style="background:'+col+'"></i>'+esc(it.k)+' '+it.v+'</span>';
+    }).join('');
+  }
+}
+buildReadout();
 render();
 </script>
 
@@ -1226,7 +1359,21 @@ render();
         raf=requestAnimationFrame(inertia);
       } else { raf=0; vel=0; }
     }
+    /* V29D · 命中判定收紧：只认「以盘心为圆心、半径 185±34」的环带，且不得落到盘心水平线以下，
+       这样 REC 读数与底部提示文字区域彻底不再触发拖拽，避免误触 */
+    function hitRing(e){
+      var r=svg.getBoundingClientRect();
+      var scale=Math.min(r.width/1000, r.height/200);
+      if(!scale) return false;
+      var pv=pivotOf();
+      var dx=(e.clientX-pv.x)/scale, dy=(e.clientY-pv.y)/scale;
+      if(dy > 24) return false;                 // 盘心水平线以下（读数 / 提示区）不响应
+      var dist=Math.sqrt(dx*dx+dy*dy);
+      return Math.abs(dist-185) <= 34;          // 环体半径 185：容差覆盖 28px 描边 + 14px 手柄
+    }
     wrap.addEventListener('pointerdown', function(e){
+      if(e.button!==undefined && e.button!==0) return;
+      if(!hitRing(e)) return;                   // 环带外：直接放过，不进入拖拽
       stopInertia(); dragging=true;
       pivot=pivotOf();
       var max=stage.scrollWidth-stage.clientWidth;
