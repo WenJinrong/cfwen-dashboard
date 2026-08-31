@@ -17,6 +17,9 @@
     --cf:#e0584a; --cfm:#4aa6dd; --cfhd:#a87fe0;
     --mono:"SFMono-Regular","JetBrains Mono",Consolas,"Liberation Mono",Menlo,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    /* V32 · 整页等比缩放系数：由 JS 的 refit() 按视口高度算出并写入。
+       1 = 原始尺寸；<1 = 矮屏（2K/1080p）上整体缩小，保证「一屏看全」且与 4K 视觉比例一致。 */
+    --fit: 1;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   html { scroll-behavior:smooth; }
@@ -39,7 +42,12 @@
   .hcard.active *, .hcard.hot *, .tl-node.open *, .entry.open * {
     -webkit-user-select:text; user-select:text; caret-color:transparent;
   }
-  .wrap { max-width:none; margin:0; position:relative; z-index:1; }
+  /* V32 · 整页等比缩放：矮屏（2K 的 ~1300px / 1080p 的 ~940px 可视高）装不下 1179px 的自然高度时，
+     整体缩小而不是让页面滚动。body 的 padding(40+90) 在 .wrap 之外、不参与缩放，
+     所以 refit() 里预留固定 132px（40+90 的 padding + 2px 亚像素余量）。
+     缩放不作用于 .lb-overlay / 背景层 / 水印（都在 .wrap 之外），
+     它们保持满屏，不受影响。 */
+  .wrap { max-width:none; margin:0; position:relative; z-index:1; zoom: var(--fit); }
 
   /* ===== HERO ===== */
   .hero {
@@ -555,7 +563,11 @@
 
   /* V27B · 仅激活卡封顶内滚 + 深色滚动条 + 配图统一 */
   .hcard { display: flex; flex-direction: column; }
-  .hcard.active { max-height: calc(100vh - 200px); width: min(1100px, 90vw); }
+  /* ⚠️ 2026-08-31 V32 修：zoom 子树里 `vh` **不随 zoom 缩放**（实测 100vh 的 computed 恒为未缩放的
+     视口高，rect 才是缩放后的物理高），而 px 会。所以 `calc(100vh - 200px)` 这种混合单位在缩放后
+     比例失衡。这里把 vh 项除以 --fit，换算成「缩放坐标系里的视口高」，px 项保持不变
+     （200px 是保留给页面 chrome 的净空，它同样被缩放，量纲一致）。 */
+  .hcard.active { max-height: calc(100vh / var(--fit) - 200px); width: min(1100px, 90vw); }
   /* ⚠️ 2026-08-31 修：此处原写 `.h-card .h-meta`（下划线拼写错误，实际类名是 .hcard），
      导致 .h-meta 是这一列里【唯一】没拿到 flex:0 0 auto 的项 → 默认 flex-shrink:1。
      展开卡在矮视口下（如 566px 高的预览面板，max-height 仅 366px）空间不够时，
@@ -565,7 +577,7 @@
   .hcard.active .h-body {
     display: block !important; grid-template-rows: auto !important;
     overflow-y: auto !important; overflow-x: hidden !important;
-    flex: 1 1 auto; min-height: 0; max-height: calc(100vh - 320px);
+    flex: 1 1 auto; min-height: 0; max-height: calc(100vh / var(--fit) - 320px);
   }
   .h-body > div { overflow: visible !important; min-height: 0; }
   .h-body::-webkit-scrollbar { width: 5px; }
@@ -575,9 +587,10 @@
   .detail::-webkit-scrollbar, .ana-box p::-webkit-scrollbar { width: 4px; }
   .detail::-webkit-scrollbar-track, .ana-box p::-webkit-scrollbar-track { background: transparent; }
   .detail::-webkit-scrollbar-thumb, .ana-box p::-webkit-scrollbar-thumb { background: var(--line-sub); border-radius: 2px; }
-  .detail { max-height: 40vh; overflow: auto; }
+  /* 同样是「占视口 N%」的语义，缩放后要除以 --fit 才是真的视口 N% */
+  .detail { max-height: calc(40vh / var(--fit)); overflow: auto; }
   .ana-box { display: flex; flex-direction: column; }
-  .ana-box p { max-height: 35vh; overflow: auto; transition: max-height .2s ease; }
+  .ana-box p { max-height: calc(35vh / var(--fit)); overflow: auto; transition: max-height .2s ease; }
   /* V31 · 仅 PV 舆情段重点加粗（主人指定范围：只 PV 舆情，KV 分析不加粗）
      暖金色高亮 + 700 字重，在灰阶分析文中突出关键结论。
      作用域限定 .ana-box.pv，KV 框(.ana-box.kv)内即使出现 strong 也不套用。 */
@@ -681,6 +694,35 @@
     .dn-cap { font-size:8.5px; }
   }
 /* V29B-END */
+
+/* V32-START · 跨分辨率等比缩放（4K / 2K / 1080p 视觉比例一致） */
+  /* 量「基准高度」用的临时态：refit() 量之前挂上、量完立刻摘掉，只存在一帧，肉眼不可见。
+     目的：不管此刻有没有卡片展开，量到的都是【全折叠】时的自然高度。
+     否则会出现「点开一张卡 → 页面变高 → fit 变小 → 整页缩水」这种反直觉联动。
+     ⚠️ 必须放在样式表末尾：.h-body 那条要压过前面的 .hcard.active .h-body{display:block!important}
+        （两者特异性相同 0,3,0，靠源码顺序决胜）。 */
+  .wrap.fit-measuring .h-body { display: none !important; }
+  .wrap.fit-measuring .hcard.active,
+  .wrap.fit-measuring .hcard.hot {
+    width: auto !important; max-height: none !important;
+    height: 260px !important; padding-bottom: 28px !important; overflow: hidden !important;
+  }
+  .wrap.fit-measuring .hcard.active .h-theme,
+  .wrap.fit-measuring .hcard.hot .h-theme {
+    display:-webkit-box !important; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden; height:38px !important; min-height:38px !important; max-height:38px !important;
+    margin:8px 0 8px !important;
+  }
+  .wrap.fit-measuring .hcard.active .h-meta,
+  .wrap.fit-measuring .hcard.hot .h-meta {
+    height:22px !important; min-height:22px !important; max-height:22px !important;
+    overflow:hidden !important; flex-wrap:nowrap !important;
+  }
+  .wrap.fit-measuring .hcard.active .h-thumb,
+  .wrap.fit-measuring .hcard.hot .h-thumb {
+    height:100px !important; min-height:100px !important; max-height:100px !important;
+  }
+/* V32-END */
 
 </style>
 </head>
@@ -1383,6 +1425,34 @@ render();
   addLayer('hud-frame', '<i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>');
   if(!document.querySelector('.halftone')){ var ht=document.createElement('div'); ht.className='halftone'; document.body.appendChild(ht); }
 
+  /* ===== V32 · 整页等比缩放：矮屏一屏看全，且与高屏保持同一视觉比例 =====
+     做法：按视口高度算一个 fit，写到 :root 的 --fit，由 .wrap{zoom:var(--fit)} 整体缩放。
+     为什么不直接改各处字号/间距：那样 4K 与 2K 的版面比例必然不同，主人要的是「比例一致」。 */
+  var MIN_FIT = 0.62;   // 再小字就看不清了，宁可留一点滚动
+  var BODY_PAD = 130;   // body padding: 40(top) + 90(bottom)，在 .wrap 之外、不参与缩放，所以是定值
+  function refit(){
+    var wrap = document.querySelector('.wrap');
+    if(!wrap) return;
+    // ⚠️ 必须先把 zoom 归 1 再量：zoom 下 getBoundingClientRect 返回的是缩放后的物理高，
+    //    拿它当 natural 会形成「越缩越缩」的正反馈。
+    var prev = wrap.style.zoom;
+    wrap.style.zoom = '1';
+    wrap.classList.add('fit-measuring');   // 抹平「有卡展开」带来的高度差，量到的恒为全折叠基准高
+    var natural = wrap.getBoundingClientRect().height;
+    wrap.classList.remove('fit-measuring');
+    wrap.style.zoom = prev;
+    if(!natural) return;
+    var avail = window.innerHeight - BODY_PAD - 2;   // 2px 余量吸收亚像素舍入
+    var fit = Math.max(MIN_FIT, Math.min(1, avail / natural));
+    // ⚠️ 必须向下取整（floor 不是 round）：round 到 0.1% 会多出 1~3px，页面又冒出一条滚动条
+    fit = Math.floor(fit * 1000) / 1000;
+    document.documentElement.style.setProperty('--fit', fit);
+  }
+  var _fitT = 0;
+  function refitSoon(){ clearTimeout(_fitT); _fitT = setTimeout(refit, 120); }
+  window.addEventListener('resize', refitSoon);
+  window.__refit = refit;
+
   /* V17-STAGE · 每次 render 后重新绑定到实时 #film，避免重渲后监听失效 */
   function getStage(){ return document.getElementById('film'); }
   function setDialHandle(p){
@@ -1548,8 +1618,9 @@ render();
   if(typeof render==='function'){
     var _o=render;
     // 打开页面 / 切换分类时均不自动展开任何胶片（保持全部关闭）
-    render=function(){_o();bindStage();updateActive();};
+    render=function(){_o();bindStage();updateActive();refitSoon();};
     render();
+    refit();   // 首次同步定档，避免先按 fit=1 画一帧再跳到缩放态
   }
 })();
 </script>
