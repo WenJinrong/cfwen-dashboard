@@ -1064,8 +1064,32 @@ function expandCard(card){
      不保持 active 内容会瞬时消失、max-height 动画沦为空壳；
      动画结束后摘除 active，CSS 折叠态接管（终值一致，无跳变）。 */
   var cards=[].slice.call(stage.querySelectorAll('.hcard'));
-  /* 先取消所有卡残留的 WAAPI 补间（防尺寸串台），再记录当前 active 的旧卡列表 */
-  cards.forEach(function(c){ if(c.getAnimations) c.getAnimations().forEach(function(an){ an.cancel(); }); });
+  /* V34FIX18 · 快速连续切换（间隔 <500ms）时「两个同时收起」的根因：
+     旧卡 A 的收起补间（fill:forwards）在 expandCard 开头被 cancel → WAAPI forwards
+     移除 → A 弹回 CSS active 展开态（视觉闪回）+ onfinish 不执行 → A active 残留
+     → prevActives 同时读到 [A, B] → A、B 一起播收起补间（主人实测「跳转过快两个同时收起」）。
+     修复：cancel 前把仍在「收起补间中」的非本卡定格折叠 + 摘 active（transition 临时禁用），
+     使 cancel 后不弹回、不进 prevActives、不再重复收起。正常切换（无残留动画）不受影响。 */
+  cards.forEach(function(c){
+    if(c===card) return;
+    var anims=(c.getAnimations)?c.getAnimations():[];
+    if(!anims.length) return;
+    var collapsing=anims.some(function(an){
+      var f=''; try{ f=an.effect.getTiming().fill; }catch(e){}
+      return f==='forwards';
+    });
+    if(collapsing && c.classList.contains('active')){
+      var t0=c.style.transition;
+      c.style.transition='none';                         /* 防 cancel 回跳触发 CSS 过渡 */
+      anims.forEach(function(an){ an.cancel(); });
+      c.classList.remove('active');
+      c.classList.remove('hot');
+      void stage.offsetWidth;                            /* reflow：CSS 折叠态接管 */
+      c.style.transition=t0;
+    } else {
+      anims.forEach(function(an){ an.cancel(); });
+    }
+  });
   void stage.offsetWidth;
   var prevActives=[].slice.call(document.querySelectorAll('.hcard.active'));
   /* V34FIX4 · 量最终布局前，先把 stage 内所有卡瞬时回折叠态：
