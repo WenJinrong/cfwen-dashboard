@@ -1005,6 +1005,18 @@ function bestKv(r){
   if(r.kv_cell_images&&r.kv_cell_images.length){ var x=r.kv_cell_images[0]; return (typeof x==='string')?x:(x&&x.url?x.url:''); }
   return '';
 }
+/* V34FIX48 · 卡片切走/关闭时停止内嵌视频播放（主人需求）：
+   <video> pause()；B站 iframe 播放器 postMessage pauseVideo（player.bilibili.com 支持）。
+   在 collapseCard 本卡收起、V34FIX15 摘除其他卡、expandCard 旧卡收起三处调用。 */
+function stopVideos(root){
+  if(!root || !root.querySelectorAll) return;
+  root.querySelectorAll('video.video-player').forEach(function(v){
+    try{ v.pause(); }catch(e){}
+  });
+  root.querySelectorAll('iframe.video-player').forEach(function(f){
+    try{ f.contentWindow.postMessage(JSON.stringify({event:'command', func:'pauseVideo', args:[]}), '*'); }catch(e){}
+  });
+}
 
 function toggleAna(el){
   var box = el.closest ? el.closest('.ana-box') : null;
@@ -1196,6 +1208,7 @@ function expandCard(card){
   anims.push(anim);
   prevActives.forEach(function(a){
     if(a===card) return;
+    stopVideos(a);   /* V34FIX48 · 切走旧卡时停止其内嵌视频播放 */
     var aBody=a.querySelector('.h-body');
     var prevAni=aBody?aBody.style.animation:null;
     if(aBody) aBody.style.animation='none';   /* 防 hbIn 重新淡入 */
@@ -1293,6 +1306,7 @@ function collapseCard(card){
   /* V34FIX19c · 收起立即恢复字幕（不等动画结束——主人：关闭卡片详细后要马上出字幕）。
      收起动画进行中字幕即可淡入，无需等 follow 收尾。 */
   document.body.classList.remove('film-open');
+  stopVideos(card);   /* V34FIX48 · 关闭本卡时停止内嵌视频播放 */
   cards.forEach(function(c){ if(c.getAnimations) c.getAnimations().forEach(function(an){ an.cancel(); }); });
   /* V34FIX15 · 主人实测「有时候关闭卡片时会打开右边的卡片」「按 esc 也会」：
      根因 = 快速操作序列下（如切换进行中就关闭），其他卡的收起/展开补间被上面的
@@ -1302,7 +1316,7 @@ function collapseCard(card){
      修复：cancel 残留动画的同时，把其他仍处于 active 的卡一并摘除——
      关闭本卡的语义是「不留下任何打开的卡」。 */
   cards.forEach(function(c){
-    if(c!==card && c.classList.contains('active')){ c.classList.remove('active'); c.classList.remove('hot'); }
+    if(c!==card && c.classList.contains('active')){ c.classList.remove('active'); c.classList.remove('hot'); stopVideos(c); }   /* V34FIX48 */
   });
   void stage.offsetWidth;
   var doc=document.documentElement;
