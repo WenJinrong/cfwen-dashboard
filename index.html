@@ -527,7 +527,7 @@
   .hcard.active .h-body, .hcard.hot .h-body { grid-template-rows:1fr; }
   /* 底部仪表盘 = 精密仪器（细线弧 + 荧光黄指针/刻度） */
   /* V29D · 抓取范围收紧：cursor:grab 与命中判定都只落在圆环本体附近，读数/提示文字区不再误触 */
-  .dial-wrap { position:relative; width:min(1100px,96vw); margin:110px auto 8px; touch-action:none; user-select:none; -webkit-user-select:none; }
+  .dial-wrap { position:relative; width:min(1100px,96vw); margin:60px auto 8px; touch-action:none; user-select:none; -webkit-user-select:none; }
   .dial-wrap.dragging, .dial-wrap.dragging * { cursor:grabbing !important; }
   .dial { display:block; width:100%; height:220px; overflow:visible; }
   .dial-base { fill:none; stroke:var(--line-sub); stroke-width:1; opacity:.35; }
@@ -1432,7 +1432,11 @@ function collapseCard(card){
       if(m2>0 && syF2>m2) syF2=m2;
       if(Math.abs((window.scrollY||doc.scrollTop)-syF2)>1) doc.scrollTop=syF2;
       var maxSL2=stage.scrollWidth-stage.clientWidth;
+      /* V34FIX47 · 收尾实时重算：动画结束布局稳定后，按「当前几何」重算行首/折叠居中
+         （吸收 flex 微移——主人：后面的卡关闭后还是不能居中，测量时值可能偏）。 */
       var sl2=sxFold;   /* V34FIX37/38 · 收起后行首（第一张折叠卡左缘对齐视口左缘，行填满） */
+      var fc=Math.max(0, Math.min(maxSL2, card.offsetLeft+fWn/2-(window.innerWidth/2-stage.getBoundingClientRect().left)/fit2));
+      sl2=Math.max(sl2, fc);   /* V34FIX46 · 后面的卡折叠居中（>行首时） */
       if(Math.abs(sl2-stage.scrollLeft)>1) stage.scrollLeft=sl2;
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
