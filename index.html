@@ -1202,7 +1202,7 @@ function expandCard(card){
   var anim=card.animate(
     [{width:w0+'px', maxHeight:h0+'px', transform:'scale(.95) translateY(2px)', opacity:.58},
      {width:finalW+'px', maxHeight:finalH+'px', transform:'scale(1) translateY(0)', opacity:1}],
-    {duration:500, easing:'cubic-bezier(.3,.1,.25,1)'   /* V34FIX26 · 前段平缓：缩小匀速，maxScroll 每帧变化小 → scrollY 钳制平滑无跳（主人：跳变是因为缩小） */}
+    {duration:500, easing:'cubic-bezier(.16,1,.3,1)'}
   );
   card.style.transition=prevT;
   anims.push(anim);
@@ -1219,7 +1219,7 @@ function expandCard(card){
     var animA=a.animate(
       [{width:aW+'px', maxHeight:aH+'px', transform:'scale(1) translateY(0)', opacity:1},
        {width:fs.w+'px', maxHeight:fs.h+'px', transform:'scale(.95) translateY(2px)', opacity:.58}],
-      {duration:500, easing:'cubic-bezier(.3,.1,.25,1)'   /* V34FIX26 · 前段平缓：缩小匀速，maxScroll 每帧变化小 → scrollY 钳制平滑无跳（主人：跳变是因为缩小） */, fill:'forwards'}
+      {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
     );
     a.style.transition=prevTrans[a];
     animA.onfinish=function(){
@@ -1253,8 +1253,18 @@ function expandCard(card){
   function allDone(){
     return !anims.some(function(an){ return an.playState==='running'||an.playState==='pending'; });
   }
+  /* V34FIX32 · 滚动彻底改为「CSS smooth + 一次赋值」——浏览器原生平滑滚动由合成器驱动
+     （不占主线程 → 284 卡页面动画不卡；无逐帧 scrollTop/scrollLeft 赋值 → 无 layout
+     thrashing、无插值时钟与 WAAPI 时钟错位的掉帧跳变）。
+     与 WAAPI 卡片动画并行平滑（约同 500ms）；收尾强制微调到位（smooth 已滚大部分，
+     剩余几 px 无感）。⚠️ 之前 V34FIX23/27/28 的逐帧 progress 插值/限幅全部作废。 */
+  doc.style.scrollBehavior='smooth';   /* 垂直：CSS smooth 一次赋值（距离小，合成器平滑） */
+  doc.scrollTop=sy;
+  /* 水平：不用 CSS smooth（距离大时长不可控 + 干扰逐帧插值），由 follow 按 progress 插值 */
   function follow(){
-    /* progress = 运行中动画的最大 eased progress；全部结束 → 1（终点） */
+    /* V34FIX33 · 水平逐帧插值（与动画同步）：CSS smooth 在 scrollLeft 距离大（几千 px）时
+       时长不可控（1s+）→ 动画结束还在滚（主人：打开后才缓缓移动过去）。
+       垂直保持 CSS smooth（距离小已验证）；水平用 eased progress 插值（V34FIX9 恢复）。 */
     var prog=null;
     anims.forEach(function(an){
       if(an.playState==='running'||an.playState==='pending'){
@@ -1262,43 +1272,23 @@ function expandCard(card){
         if(p!==null){ if(prog===null || p>prog) prog=p; }
       }
     });
-    var pr=allDone()?1:((prog===null)?0:prog);
-    /* V34FIX23 · 垂直也按 progress 平滑插值（主人：切换/打开时上下移动量看起来很大 =
-       旧版第一帧 doc.scrollTop=min(sy,m) 一步到位，深滚动位置跳变量巨大）。
-       与水平同节奏：scrollY 从 yBefore 平滑滚到 sy（展开居中目标），动画结束精确落位。
-       （V34FIX2 主人要求「展开立即到位」= 动画一开始就同步滚动，不是展开完再弹，
-         progress 插值正满足；也不允许第一帧硬跳。） */
-    var m=doc.scrollHeight-window.innerHeight;
-    var target=Math.round(yBefore+(sy-yBefore)*pr);
-    if(m>0 && target>m) target=m;
-    if(target<0) target=0;
-    /* V34FIX27 · 掉帧 progress 突变限幅：每帧最多 ±10px，吸收突变平滑滚动 */
-    var yc=window.scrollY||doc.scrollTop;
-    if(Math.abs(target-yc)>10) target=yc+(target>yc?10:-10);
-    if(Math.abs((window.scrollY||doc.scrollTop)-target)>1) doc.scrollTop=target;
-    /* V34FIX9 · 水平跟随：按 B 展开补间的 eased progress 把 scrollLeft 从 startSL
-       平滑插值到 sx（与卡片宽度动画同一节奏，视口胶片式左右滑动）。
-       sx 是「全折叠布局」的最终目标（V34FIX4，不卡左边）；动画中 A 变宽时
-       scrollWidth 变大，clamp 到当前上限，A 收窄后最终精确落位 sx。 */
     if(prog!==null){
       var maxSL=stage.scrollWidth-stage.clientWidth;
       var sl=startSL+(sx-startSL)*prog;
       if(sl>maxSL) sl=maxSL;
       if(sl<0) sl=0;
-      /* V34FIX27 · 水平同样限幅 ±10px/帧（掉帧 progress 突变防跳） */
-      if(Math.abs(sl-stage.scrollLeft)>10) sl=stage.scrollLeft+(sl>stage.scrollLeft?10:-10);
       if(Math.abs(sl-stage.scrollLeft)>0.5) stage.scrollLeft=sl;
     }
-    /* V34FIX27 · 循环条件：动画未完 或 scrollY/sl 未到位 或兜底 90 帧 → 继续 */
-    var yEnd=window.scrollY||doc.scrollTop;
-    var slEnd=stage.scrollLeft;
-    if(!allDone() || Math.abs(yEnd-sy)>1 || Math.abs(slEnd-sx)>1 || tail<90){
+    if(!allDone() || tail<3){
       if(allDone()) tail++;
       requestAnimationFrame(follow);
     }else{
+      /* 收尾：恢复 scrollBehavior + 移除锚定抑制 + 强制精确到位（剩余微调无感） */
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
       doc.style.scrollBehavior=prevSB;
+      doc.scrollTop=sy;
+      stage.scrollLeft=sx;
     }
   }
   requestAnimationFrame(follow);
@@ -1410,54 +1400,34 @@ function collapseCard(card){
   var startY=yBefore;
   var startSL=stage.scrollLeft;
   var tail=0;
+  /* V34FIX32 · 滚动彻底改为「CSS smooth + 一次赋值」（同 expandCard）：
+     浏览器原生平滑滚动（合成器驱动，不卡不掉帧），与收起动画并行；
+     收尾强制微调到位（剩余几 px 无感）。逐帧插值/限幅全部作废。 */
+  doc.style.scrollBehavior='smooth';   /* 垂直：CSS smooth 一次赋值 */
+  doc.scrollTop=syFold;
+  /* 水平：不用 CSS smooth，由 follow 按 progress 插值 */
   function follow(){
-    var m=doc.scrollHeight-window.innerHeight;
-    var y=window.scrollY||doc.scrollTop;
+    /* V34FIX33 · 水平逐帧插值（同 expandCard，见上）；垂直保持 CSS smooth */
     var pr=0;
-    /* ⚠️ getComputedTiming 在 Animation 上不存在（undefined），必须是 effect 的方法。
-       ⚠️⚠️ V34FIX14 · 动画 finished/idle（onfinish 里 cancel 后）时 progress 会归 0，
-       若继续用 progress 插值，target 被拉回 startY/startSL（展开位置）→ scroll 闪跳
-       约 50ms（实测 c496~c545 cxDiff -241.9 / scrollY 271，主人看到「卡一下」）。
-       动画一停就强制 pr=1（插值锁定终点），绝不用 cancel 后的归零 progress。 */
     if(animA.playState==='running'||animA.playState==='pending'){
       try{ pr=animA.effect.getComputedTiming().progress; }catch(e){ pr=1; }
       if(!(pr>=0)) pr=1;
     }else{ pr=1; }
-    /* V34FIX12 · 垂直居中插值（取整防 scrollY 取整阈值陷阱） */
-    var target=Math.round(startY+(syFold-startY)*pr);
-    if(m>0 && target>m) target=m;                        /* clamp：不滚过最终 maxScroll */
-    if(target<0) target=0;
-    /* V34FIX27 · 动画时钟掉帧 → progress 突变 → target 突变 → scrollY 一帧跳几十 px
-       （实测 pr 0.039→0.246 一帧跳 54px）。target 每帧限幅 ±MAXSTEP，
-       吸收突变，滚动始终平滑（动画结束继续限幅滚到位，见循环条件）。 */
-    var yc=window.scrollY||doc.scrollTop;
-    if(Math.abs(target-yc)>10) target=yc+(target>yc?10:-10);
-    if(Math.abs(yc-target)>0.5) doc.scrollTop=target;
-    /* V34FIX13 · 水平居中插值（与展开 sx 同节奏，视口胶片式滑动到折叠居中位） */
     var maxSL=stage.scrollWidth-stage.clientWidth;
     var sl=Math.round(startSL+(sxFold-startSL)*pr);
     if(sl>maxSL) sl=maxSL;
     if(sl<0) sl=0;
     if(Math.abs(sl-stage.scrollLeft)>0.5) stage.scrollLeft=sl;
-    /* V34FIX27 · 循环条件：动画运行中 或 scrollY 未到位 或兜底 90 帧 → 继续；
-       动画结束但 scrollY 还在限幅逼近中（掉帧导致动画结束未到位）→ 继续滚到位才收尾。 */
-    var yEnd=window.scrollY||doc.scrollTop;
-    if(animA.playState==='running'||animA.playState==='pending'||Math.abs(yEnd-syFold)>1||tail<90){
+    if(animA.playState==='running'||animA.playState==='pending'||tail<3){
       if(animA.playState!=='running'&&animA.playState!=='pending') tail++;
       requestAnimationFrame(follow);
     }else{
-      /* 收尾最终校准：双轴都按最新几何落位（flex 微移时修正，无动画无跳变感） */
-      var m2=doc.scrollHeight-window.innerHeight;
-      var y2=window.scrollY||doc.scrollTop;
-      var syF2=Math.round(Math.max(0, card.getBoundingClientRect().top+y2+rFoldH/2-window.innerHeight/2));
-      if(m2>0 && syF2>m2) syF2=m2;
-      if(Math.abs((window.scrollY||doc.scrollTop)-syF2)>1) doc.scrollTop=syF2;
-      var maxSL2=stage.scrollWidth-stage.clientWidth;
-      var sl2=Math.max(0, Math.min(maxSL2, Math.round(card.offsetLeft+fWn/2-stage.clientWidth/2)));
-      if(Math.abs(sl2-stage.scrollLeft)>1) stage.scrollLeft=sl2;
+      /* 收尾：恢复 scrollBehavior + 移除锚定抑制 + 强制精确到位（剩余微调无感） */
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
       doc.style.scrollBehavior=prevSB;
+      doc.scrollTop=syFold;
+      stage.scrollLeft=sxFold;
       /* V34FIX19 · 收起完成且无任何展开卡时，恢复显示滚动字幕 */
       if(!document.querySelector('.hcard.active')) document.body.classList.remove('film-open');
     }
