@@ -445,7 +445,7 @@
   /* 横向胶片条 */
   .stage { position:relative; overflow-x:auto; overflow-y:visible; padding:18px 0 10px; z-index:1; scroll-behavior:auto; scrollbar-width:none; -ms-overflow-style:none; }
   .stage::-webkit-scrollbar { display:none; }
-  .filmstrip { display:flex; gap:20px; align-items:flex-start; padding:10px 50vw; min-height:320px; }
+  .filmstrip { display:flex; gap:20px; align-items:flex-start; padding:10px 50vw; min-height:350px; }
   /* 卡片 = 深色面板 + 细边框 + 左侧色条（工业档案夹） */
   .hcard { flex:0 0 auto; width:360px; background:var(--bg-card);
     border:1px solid var(--line-sub); border-radius:3px; padding:14px 16px 16px; opacity:.58; transform:scale(.95) translateY(2px);
@@ -641,21 +641,23 @@
 /* V30A-START */
   /* V30A · 折叠态卡片等高：日期 / 标题 / 标签 / 缩略图 四块全部定高，
      无 KV 的卡补一个虚线占位框，避免 245 / 110 / 129 / 264 / 147 五种高度混排 */
-  /* 260 = 桌面统一高度：内容实高约 215 + padding-top 14 + padding-bottom 28 + 边框 2 ≈ 259；
+  /* 300 = 桌面统一高度（2026-09-01 主人要求「折叠态整体变大」：260→300）：
+     内容实高约 255 + padding-top 14 + padding-bottom 28 + 边框 2 ≈ 299；
      padding-bottom 保持 28 给底部「点击展开」提示留出净空，避免压住缩略图底边 */
-  .hcard:not(.active):not(.hot) { height:260px; padding-bottom:28px; }
-  /* 标题固定 2 行，超出省略（展开态恢复完整显示） */
+  .hcard:not(.active):not(.hot) { height:300px; padding-bottom:28px; }
+  /* 标题固定 2 行，超出省略（展开态恢复完整显示）；折叠态字号略大 17px */
   .hcard:not(.active):not(.hot) .h-theme {
     display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-    height:38px; min-height:38px; max-height:38px; margin:8px 0 8px; line-height:1.2;
+    height:42px; min-height:42px; max-height:42px; margin:9px 0 9px; line-height:1.2;
+    font-size:17px;
   }
   /* 标签行固定 1 行，避免第 4 个标签换行把卡片顶高 */
-  .hcard:not(.active):not(.hot) .h-meta { height:22px; min-height:22px; max-height:22px; overflow:hidden; flex-wrap:nowrap; }
+  .hcard:not(.active):not(.hot) .h-meta { height:24px; min-height:24px; max-height:24px; overflow:hidden; flex-wrap:nowrap; }
   .hcard:not(.active):not(.hot) .h-meta .tag { flex:none; }
-  /* 缩略图槽位恒定 130px */
-  .hcard:not(.active):not(.hot) .h-thumb { height:100px; min-height:100px; max-height:100px; }
+  /* 缩略图槽位恒定 120px（2026-09-01 随卡片整体放大：100→120） */
+  .hcard:not(.active):not(.hot) .h-thumb { height:120px; min-height:120px; max-height:120px; }
   /* 无 KV 的卡片：等高等宽的虚线空槽（斜纹底 + 说明文字），视觉上读成「未收录」而非「塌了」 */
-  .h-thumb-ph { width:100%; height:100px; min-height:100px; margin:4px 0 8px; border-radius:2px;
+  .h-thumb-ph { width:100%; height:120px; min-height:120px; margin:4px 0 8px; border-radius:2px;
     border:1px dashed var(--line-bright); background:
       repeating-linear-gradient(135deg, rgba(255,255,255,.022) 0 7px, rgba(0,0,0,0) 7px 14px),
       var(--bg-deep);
@@ -713,7 +715,7 @@
   .wrap.fit-measuring .hcard.active,
   .wrap.fit-measuring .hcard.hot {
     width: auto !important; max-height: none !important;
-    height: 260px !important; padding-bottom: 28px !important; overflow: hidden !important;
+    height: 300px !important; padding-bottom: 28px !important; overflow: hidden !important;
   }
   .wrap.fit-measuring .hcard.active .h-theme,
   .wrap.fit-measuring .hcard.hot .h-theme {
@@ -746,7 +748,10 @@
       border-color .3s, box-shadow .3s, background .3s, filter .3s,
       width .5s cubic-bezier(.16,1,.3,1), max-height .5s cubic-bezier(.16,1,.3,1);
   }
-  .hcard:not(.active):not(.hot) { max-height: 260px; }
+  /* 折叠态高度过渡锚点 = 折叠统一高度 300（2026-09-01 随卡片整体放大 260→300，
+     与 V25 的 .hcard:not(.active):not(.hot){height:300px} 同步——锚点不一致时
+     min(height,max-height)=260 会截断放大，实测折叠高不变化） */
+  .hcard:not(.active):not(.hot) { max-height: 300px; }
   @keyframes hbIn {
     from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -1275,13 +1280,12 @@ function collapseCard(card){
   var aBody=card.querySelector('.h-body');
   var prevAni=aBody?aBody.style.animation:null;
   if(aBody) aBody.style.animation='none';                /* 防 hbIn 重新淡入 */
-  /* V34FIX14 · to maxHeight 必须用「折叠视觉高」rFoldH/fit（逻辑 247=物理 153.1），
-     不能用 csF.maxHeight（260 逻辑=161.2 物理）——动画期间 .h-body 显示被裁到 161.2，
-     cancel+remove active 后 .h-body display:none 自然高塌到 153.1 → 8px 高度突变
-     → 触发锚定回拉（「卡一下」）。裁到 153.1 时 body 恰好完全隐藏（只剩头部），
-     body 消失瞬间高度无缝衔接。 */
-  var fit=parseFloat(getComputedStyle(document.querySelector('.wrap')).zoom)||1;
-  var fHvis=Math.max(1, rFoldH/fit)+'px';
+  /* V34FIX17 · to maxHeight 直接用 csF.maxHeight（CSS 折叠态值，300px，与 V25 高度锚点一致）：
+     ⚠️ 旧 V34FIX14 用 rFoldH/fit（视觉高转逻辑 285）→ 与 CSS 折叠态布局高（300 逻辑）差
+     15px → cancel 时高度闪跳约 9px（实测 WAAPI 终值 145.5 vs CSS 折叠 153.1，虽然 scroll
+     不闪但高度有跳）。用 csF.maxHeight 则 WAAPI 终值与 CSS 完全一致 → 零高度跳变。
+     （V34FIX14 当时误判是 body 显示/消失差异，实际是锚点值 260 与 rFoldH/fit=247 的差。） */
+  var fHvis=fH;                                          /* csF.maxHeight（与 CSS 折叠态一致） */
   /* V34FIX16 · 关闭动画统一平滑（主人：「缩到最小和到微缩卡片状态的动画还是不够平滑」）。
      旧版 WAAPI 只补间 width/maxHeight，transform/opacity 靠 CSS transition(.4s) 在
      onfinish（500ms）后才触发 → 视觉被拆成「先缩尺寸(0-500ms) + 再微缩淡出(500-900ms)」
