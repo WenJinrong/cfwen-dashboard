@@ -457,7 +457,7 @@
      不占文档流，页面高度零变化；滚动页面时字幕始终贴边可见。
      胶片行收起态显示（body 无 film-open 类），展开态隐藏（opacity 0，占位不变不跳动）。
      底部字幕由 body padding-bottom 让位（footer 不被遮）。 */
-  .ticker { position:fixed; left:0; right:0; height:34px; overflow:hidden; z-index:60;
+  .ticker { position:fixed; left:0; right:0; height:42px; overflow:hidden; z-index:60;
     display:flex; align-items:center; pointer-events:none;
     border-top:1px solid var(--line-sub); border-bottom:1px solid var(--line-sub);
     background:var(--bg-panel); opacity:1; transition:opacity .3s ease;
@@ -475,7 +475,7 @@
   @keyframes tickR { from{transform:translateX(0)} to{transform:translateX(-50%)} }
   body.film-open .ticker { opacity:0; }
   /* 底部字幕让位：页面滚动到底时 footer 下方留出 34px，不压住 footer 文字 */
-  body { padding-bottom:34px; }
+  body { padding-bottom:42px; }   /* V34FIX46 · 字幕更高 42px，底部让位同步 */
   .filmstrip { display:flex; gap:20px; align-items:flex-start; padding:10px 50vw; min-height:350px; }
   /* 卡片 = 深色面板 + 细边框 + 左侧色条（工业档案夹） */
   .hcard { flex:0 0 auto; width:360px; background:var(--bg-card);
@@ -1351,6 +1351,14 @@ function collapseCard(card){
      滚动到第一张卡 offsetLeft → 其左缘对齐视口左缘 → 行从左侧填满。 */
   var firstCard=stage.querySelector('.hcard');
   if(firstCard) sxFold=firstCard.offsetLeft;
+  /* V34FIX46 · 后面的卡片关闭后应居中（主人：除了前面的卡片关闭后，后面的卡片不居中）：
+     sxFold = max(行首, 折叠居中目标)——前面的卡（折叠居中位 < 行首）→ 回行首（第一张在左、行填满）；
+     后面的卡（折叠居中位 > 行首）→ 折叠居中（scrollLeft 滚到它折叠居中位，不滚走）。
+     折叠居中用与展开 sx 同款精确视口公式（V34FIX45：stage 视口左缘补偿）。 */
+  var sr2=stage.getBoundingClientRect();
+  var fit2=parseFloat(getComputedStyle(document.querySelector('.wrap')).zoom)||1;
+  var foldCenter=Math.max(0, Math.min(stage.scrollWidth-cw, foldOffL+fWn/2-(window.innerWidth/2-sr2.left)/fit2));
+  sxFold=Math.max(sxFold, foldCenter);
   card.classList.add('active');                          /* 恢复展开态（同步 JS 不渲染） */
   card.style.transition=prevT;
   doc.scrollTop=yBefore;                                 /* V34FIX13 · 恢复 scrollY：
