@@ -445,9 +445,9 @@
   /* 横向胶片条 */
   .stage { position:relative; overflow-x:auto; overflow-y:visible; padding:18px 0 10px; z-index:1; scroll-behavior:auto; scrollbar-width:none; -ms-overflow-style:none; }
   .stage::-webkit-scrollbar { display:none; }
-  .filmstrip { display:flex; gap:20px; align-items:flex-start; padding:10px 50vw; min-height:280px; }
+  .filmstrip { display:flex; gap:20px; align-items:flex-start; padding:10px 50vw; min-height:320px; }
   /* 卡片 = 深色面板 + 细边框 + 左侧色条（工业档案夹） */
-  .hcard { flex:0 0 auto; width:320px; background:var(--bg-card);
+  .hcard { flex:0 0 auto; width:360px; background:var(--bg-card);
     border:1px solid var(--line-sub); border-radius:3px; padding:14px 16px 16px; opacity:.58; transform:scale(.95) translateY(2px);
     transition:transform .4s cubic-bezier(.16,1,.3,1), opacity .4s, border-color .3s, box-shadow .3s, background .3s, filter .3s;
     position:relative; cursor:pointer; overflow:hidden; }
@@ -496,7 +496,7 @@
   .hcard.active .h-body, .hcard.hot .h-body { grid-template-rows:1fr; }
   /* 底部仪表盘 = 精密仪器（细线弧 + 荧光黄指针/刻度） */
   /* V29D · 抓取范围收紧：cursor:grab 与命中判定都只落在圆环本体附近，读数/提示文字区不再误触 */
-  .dial-wrap { position:relative; width:min(1100px,96vw); margin:80px auto 8px; touch-action:none; user-select:none; -webkit-user-select:none; }
+  .dial-wrap { position:relative; width:min(1100px,96vw); margin:110px auto 8px; touch-action:none; user-select:none; -webkit-user-select:none; }
   .dial-wrap.dragging, .dial-wrap.dragging * { cursor:grabbing !important; }
   .dial { display:block; width:100%; height:220px; overflow:visible; }
   .dial-base { fill:none; stroke:var(--line-sub); stroke-width:1; opacity:.35; }
@@ -519,8 +519,8 @@
   .rail-item { font-family:var(--mono); font-size:11px; letter-spacing:1px; text-transform:uppercase; }
   .rail-item.active { background:var(--accent) !important; color:var(--bg-deep) !important; border-color:var(--accent) !important; font-weight:700; }
   @media (max-width:760px){
-    .filmstrip { padding:10px 30vw; }
-    .hcard { width:250px; }
+    .filmstrip { padding:10px 30vw !important; }
+    .hcard { width:280px; }
   }
 
 /* V16C-START */
@@ -560,7 +560,7 @@
   .detail::after, .detail.expanded::after { content:""; }
 
   /* V26-INTERACT · 首尾留白使端卡可居中 + 悬停轻高亮(不撑大，避免边界闪烁) */
-  .filmstrip { padding-left:calc(50% - 160px) !important; padding-right:calc(50% - 160px) !important; }
+  .filmstrip { padding-left:calc(50% - 180px) !important; padding-right:calc(50% - 180px) !important; }
   .hcard:not(.active):hover { opacity:.95; transform:scale(1) translateY(0); filter:brightness(1.18); border-color:var(--accent); box-shadow:0 12px 30px -12px rgba(0,0,0,.6); z-index:4; }
 
   
@@ -1214,77 +1214,135 @@ function collapseCard(card){
   var stage=card.closest('.stage')||document.querySelector('.stage');
   var cards=[].slice.call(stage.querySelectorAll('.hcard'));
   cards.forEach(function(c){ if(c.getAnimations) c.getAnimations().forEach(function(an){ an.cancel(); }); });
+  /* V34FIX15 · 主人实测「有时候关闭卡片时会打开右边的卡片」「按 esc 也会」：
+     根因 = 快速操作序列下（如切换进行中就关闭），其他卡的收起/展开补间被上面的
+     cancel 打断，其 onfinish（负责摘除 active）不执行 → 那张卡 active 永久残留、
+     保持展开 → 关闭本卡后它显露出来，看起来「打开了别的卡片」。
+     （实测复现：切 B 后 150ms 关 B，A 的收起补间被 cancel → A 残留 active 展开 682。）
+     修复：cancel 残留动画的同时，把其他仍处于 active 的卡一并摘除——
+     关闭本卡的语义是「不留下任何打开的卡」。 */
+  cards.forEach(function(c){
+    if(c!==card && c.classList.contains('active')){ c.classList.remove('active'); c.classList.remove('hot'); }
+  });
   void stage.offsetWidth;
-  var aW=card.offsetWidth, aH=card.offsetHeight;        /* 展开尺寸 = 补间起点 */
+  var doc=document.documentElement;
+  var prevSB=doc.style.scrollBehavior;
+  /* V34FIX13 · 压制提前（主人实测「会卡一下」）：remove active 瞬时折叠在
+     大视口下触发 maxScroll 钳制/scroll anchoring → 点击瞬间 scrollY 跳变。
+     anchorSt 与 scrollBehavior:'auto' 必须提前到第一次 remove active 之前注入。 */
+  var anchorSt=document.createElement('style');
+  anchorSt.id='__cfv35_anchor_off';
+  /* V34FIX14 · .stage 是独立滚动容器，它的水平滚动锚定不归 html/body 的
+     overflow-anchor 管——必须显式覆盖 .stage，否则 onfinish 布局突变时
+     scrollLeft 被锚定回拉到展开值（实测 c530 sl 34387 闪跳，主人看到「卡一下」）。 */
+  anchorSt.textContent='html, body, .stage { overflow-anchor: none !important; }';
+  document.head.appendChild(anchorSt);
+  doc.style.scrollBehavior='auto';
+  /* V34FIX14 · WAAPI from/to 必须用 getComputedStyle().width/maxHeight（CSS 态值），
+     不能用 offsetWidth/offsetHeight——后者含 border（实测折叠 offsetWidth=320 逻辑
+     vs CSS width=304，渲染差 10px），cancel 时宽度从 WAAPI 值跳回 CSS 值 → 布局突变
+     → 触发 scroll anchoring 回拉（scrollY/sl 闪跳，「卡一下」根因）。
+     from/to 与 CSS 两态完全一致 → 动画结束 cancel 后样式无缝衔接 → 无布局突变。 */
+  var csA=getComputedStyle(card);
+  var aW=csA.width, aH=csA.maxHeight;                   /* 展开态 CSS 值（WAAPI from） */
+  var aWn=card.offsetWidth, aHn=card.offsetHeight;      /* 展开尺寸数值（备用） */
+  var yBefore=(window.scrollY||doc.scrollTop);          /* 展开前 scrollY（恢复锚点） */
   var prevT=card.style.transition;
   card.style.transition='none';
   card.classList.remove('active');                       /* 瞬时折叠，量折叠尺寸 */
   void stage.offsetWidth;
-  var fW=card.offsetWidth, fH=card.offsetHeight;        /* 折叠尺寸 = 补间终点 */
-  /* V34FIX12 · 收起后居中（主人：卡片关闭后没居中）。
-     此刻全卡折叠、scrollY 尚未动 → rTopFold + scrollY = 折叠态物理页面顶部。
-     折叠居中目标 syFold 用与 expandCard 同一套「全物理」公式（zoom 单位铁律）：
-     sy = pageTop + finalH/2 − innerHeight/2。
-     ⚠️ 高度必须用 getBoundingClientRect().height（视觉物理高，实测折叠 153.1），
-     不能用 offsetHeight×zoom（逻辑 260×0.62=161.2，与视觉高差 8.1px →
-     zoom 渲染舍入误差）——用错高度 syFold 偏大 4px，scrollY 取整后又差 1px，
-     卡片中心偏上（实测 278.9 vs 视口中心 283）。 */
+  var fWn=card.offsetWidth, fHn=card.offsetHeight;      /* 折叠尺寸数值（sxFold 布局计算用） */
+  var csF=getComputedStyle(card);
+  var fW=csF.width, fH=csF.maxHeight;                   /* 折叠态 CSS 值（WAAPI to） */
+  /* V34FIX12/13 · 收起后「垂直 + 水平」双轴居中（主人：关闭后没居中→居中=左右居中→垂直也要）。
+     此刻全卡折叠 → 垂直目标 syFold 用全物理公式（视觉高 rFoldH，详见 V34FIX12）；
+     水平目标 sxFold 用全逻辑公式（offL+fW/2-cw/2，与 expandCard 的 sx 同套，zoom 单位铁律）。
+     动画期间双轴按 eased progress 平滑插值——卡片缩小的同时视口平滑滑动，
+     两个方向都把它保持在中央。 */
   var rTopFold=card.getBoundingClientRect().top;
-  var yNow=(window.scrollY||document.documentElement.scrollTop);
+  var yNow=(window.scrollY||doc.scrollTop);
   var pageTopFold=rTopFold+yNow;
   var rFoldH=card.getBoundingClientRect().height;      /* 折叠态视觉高（物理） */
   var syFold=Math.max(0, pageTopFold+rFoldH/2-window.innerHeight/2);
+  var foldOffL=card.offsetLeft;                         /* 折叠态水平位置（逻辑） */
+  var cw=stage.clientWidth;
+  var sxFold=Math.max(0, Math.min(stage.scrollWidth-cw, foldOffL+fWn/2-cw/2));
   card.classList.add('active');                          /* 恢复展开态（同步 JS 不渲染） */
   card.style.transition=prevT;
+  doc.scrollTop=yBefore;                                 /* V34FIX13 · 恢复 scrollY：
+     防 remove active 时 maxScroll 钳制跳变（大视口下折叠态 maxScroll<当前 scrollY） */
   void card.offsetWidth;
   var aBody=card.querySelector('.h-body');
   var prevAni=aBody?aBody.style.animation:null;
   if(aBody) aBody.style.animation='none';                /* 防 hbIn 重新淡入 */
+  /* V34FIX14 · to maxHeight 必须用「折叠视觉高」rFoldH/fit（逻辑 247=物理 153.1），
+     不能用 csF.maxHeight（260 逻辑=161.2 物理）——动画期间 .h-body 显示被裁到 161.2，
+     cancel+remove active 后 .h-body display:none 自然高塌到 153.1 → 8px 高度突变
+     → 触发锚定回拉（「卡一下」）。裁到 153.1 时 body 恰好完全隐藏（只剩头部），
+     body 消失瞬间高度无缝衔接。 */
+  var fit=parseFloat(getComputedStyle(document.querySelector('.wrap')).zoom)||1;
+  var fHvis=Math.max(1, rFoldH/fit)+'px';
+  /* V34FIX16 · 关闭动画统一平滑（主人：「缩到最小和到微缩卡片状态的动画还是不够平滑」）。
+     旧版 WAAPI 只补间 width/maxHeight，transform/opacity 靠 CSS transition(.4s) 在
+     onfinish（500ms）后才触发 → 视觉被拆成「先缩尺寸(0-500ms) + 再微缩淡出(500-900ms)」
+     两段拼接，观感不连贯。
+     修复：transform/opacity 一并纳入 WAAPI 补间，与尺寸同一 500ms 时间线平滑过渡
+     （scale(1)→scale(.95)、opacity 1→.58，正是折叠态 .hcard 的 CSS 值，结束无跳变）。 */
   var animA=card.animate(
-    [{width:aW+'px', maxHeight:aH+'px'},{width:fW+'px', maxHeight:fH+'px'}],
+    [{width:aW, maxHeight:aH, transform:'scale(1) translateY(0)', opacity:1},
+     {width:fW, maxHeight:fHvis, transform:'scale(.95) translateY(2px)', opacity:.58}],
     {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
   );
   animA.onfinish=function(){
+    var yKeep=(window.scrollY||doc.scrollTop);           /* V34FIX13 · 防结尾闪跳 */
+    var slKeep=stage.scrollLeft;
     card.classList.remove('active');                     /* 内容消失，折叠态接管 */
     card.classList.remove('hot');                        /* 防御：closeCard/ESC 场景同清 hot */
-    animA.cancel();                                      /* 移除 forwards 残留（值一致无跳变） */
+    animA.cancel();                                      /* 移除 forwards 残留（V34FIX14：CSS 态值一致无跳变） */
+    doc.scrollTop=yKeep;                                 /* remove active 布局变化后恢复 scrollY */
+    stage.scrollLeft=slKeep;
     if(aBody) aBody.style.animation=prevAni;
   };
-  var doc=document.documentElement;
-  var prevSB=doc.style.scrollBehavior;
-  var anchorSt=document.createElement('style');
-  anchorSt.id='__cfv35_anchor_off';
-  anchorSt.textContent='html, body { overflow-anchor: none !important; }';
-  document.head.appendChild(anchorSt);
-  doc.style.scrollBehavior='auto';
-  var startY=yNow;
+  var startY=yBefore;
+  var startSL=stage.scrollLeft;
   var tail=0;
   function follow(){
     var m=doc.scrollHeight-window.innerHeight;
     var y=window.scrollY||doc.scrollTop;
     var pr=0;
-    /* ⚠️ getComputedTiming 在 Animation 上不存在（undefined），必须是 effect 的方法；
-       直接用 animA.getComputedTiming() 抛 TypeError → catch → pr=1 → 失去平滑插值
-       （收起时 scrollY 从 startY 一步跳到目标，观感生硬）。 */
-    try{ pr=animA.effect.getComputedTiming().progress; }catch(e){ pr=1; }
-    if(!(pr>=0)) pr=1;
-    var target=Math.round(startY+(syFold-startY)*pr);   /* 取整：scrollY 对小数取整，
-       不取整会在第二帧因 |y-target|<0.5 提前停止（实测赋 130.92 → scrollY 取整 131） */
+    /* ⚠️ getComputedTiming 在 Animation 上不存在（undefined），必须是 effect 的方法。
+       ⚠️⚠️ V34FIX14 · 动画 finished/idle（onfinish 里 cancel 后）时 progress 会归 0，
+       若继续用 progress 插值，target 被拉回 startY/startSL（展开位置）→ scroll 闪跳
+       约 50ms（实测 c496~c545 cxDiff -241.9 / scrollY 271，主人看到「卡一下」）。
+       动画一停就强制 pr=1（插值锁定终点），绝不用 cancel 后的归零 progress。 */
+    if(animA.playState==='running'||animA.playState==='pending'){
+      try{ pr=animA.effect.getComputedTiming().progress; }catch(e){ pr=1; }
+      if(!(pr>=0)) pr=1;
+    }else{ pr=1; }
+    /* V34FIX12 · 垂直居中插值（取整防 scrollY 取整阈值陷阱） */
+    var target=Math.round(startY+(syFold-startY)*pr);
     if(m>0 && target>m) target=m;                        /* clamp：不滚过最终 maxScroll */
     if(target<0) target=0;
     if(Math.abs(y-target)>0.5) doc.scrollTop=target;
+    /* V34FIX13 · 水平居中插值（与展开 sx 同节奏，视口胶片式滑动到折叠居中位） */
+    var maxSL=stage.scrollWidth-stage.clientWidth;
+    var sl=Math.round(startSL+(sxFold-startSL)*pr);
+    if(sl>maxSL) sl=maxSL;
+    if(sl<0) sl=0;
+    if(Math.abs(sl-stage.scrollLeft)>0.5) stage.scrollLeft=sl;
     if(animA.playState==='running'||animA.playState==='pending'||tail<3){
       if(animA.playState!=='running'&&animA.playState!=='pending') tail++;
       requestAnimationFrame(follow);
     }else{
-      /* V34FIX12 · 收尾最终校准：动画结束 + 3 帧后布局已稳定，
-         flex 微移时按最新几何重算折叠居中位并一次性落位（无动画、无跳变感）。
-         高度同样用视觉物理高 rFoldH，目标取整避免 scrollY 取整误差。 */
+      /* 收尾最终校准：双轴都按最新几何落位（flex 微移时修正，无动画无跳变感） */
       var m2=doc.scrollHeight-window.innerHeight;
       var y2=window.scrollY||doc.scrollTop;
       var syF2=Math.round(Math.max(0, card.getBoundingClientRect().top+y2+rFoldH/2-window.innerHeight/2));
       if(m2>0 && syF2>m2) syF2=m2;
       if(Math.abs((window.scrollY||doc.scrollTop)-syF2)>1) doc.scrollTop=syF2;
+      var maxSL2=stage.scrollWidth-stage.clientWidth;
+      var sl2=Math.max(0, Math.min(maxSL2, Math.round(card.offsetLeft+fWn/2-stage.clientWidth/2)));
+      if(Math.abs(sl2-stage.scrollLeft)>1) stage.scrollLeft=sl2;
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
       doc.style.scrollBehavior=prevSB;
