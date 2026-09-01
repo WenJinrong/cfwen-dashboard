@@ -1155,7 +1155,12 @@ function expandCard(card){
   card.classList.remove('active');          /* ② 回折叠（仍无过渡，立即跳） */
   void card.offsetWidth;
   var w0=card.offsetWidth, h0=card.offsetHeight;   /* 折叠尺寸 = 动画起点 */
-  var sx=Math.max(0, Math.min(sw-cw, offL+finalW/2-cw/2));
+  /* V34FIX45 · 精确视口居中：stage 在视口内有左偏移（body margin/wrap 结构，实测 64.4 物理），
+     旧公式 offL+finalW/2-cw/2 只做到「stage 内居中」→ 卡片中心偏视口中心 ~10px（主人：第一个打开不在中间）。
+     用 stage 视口左缘反推：卡片中心(物理) = stageLeft + (offL+finalW/2-scrollLeft)×fit = innerWidth/2。 */
+  var sr=stage.getBoundingClientRect();
+  var fitSx=parseFloat(getComputedStyle(document.querySelector('.wrap')).zoom)||1;
+  var sx=Math.max(0, Math.min(sw-cw, offL+finalW/2-(window.innerWidth/2-sr.left)/fitSx));
   /* V34FIX7 · 垂直目标「居中」+ 单位终修（V34FIX5/FIX6 的教训，主人实测「其他窗口大小不能居中」）。
      ⚠️ zoom 页面单位铁律（逐项实测确认）：
      - 水平滚动容器 = .stage（zoom 子树内）：scrollLeft/offsetLeft/offsetWidth/clientWidth 全为逻辑单位
