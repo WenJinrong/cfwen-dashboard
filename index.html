@@ -1202,7 +1202,7 @@ function expandCard(card){
   var anim=card.animate(
     [{width:w0+'px', maxHeight:h0+'px', transform:'scale(.95) translateY(2px)', opacity:.58},
      {width:finalW+'px', maxHeight:finalH+'px', transform:'scale(1) translateY(0)', opacity:1}],
-    {duration:500, easing:'cubic-bezier(.16,1,.3,1)'}
+    {duration:500, easing:'cubic-bezier(.3,.1,.25,1)'   /* V34FIX26 · 前段平缓：缩小匀速，maxScroll 每帧变化小 → scrollY 钳制平滑无跳（主人：跳变是因为缩小） */}
   );
   card.style.transition=prevT;
   anims.push(anim);
@@ -1219,7 +1219,7 @@ function expandCard(card){
     var animA=a.animate(
       [{width:aW+'px', maxHeight:aH+'px', transform:'scale(1) translateY(0)', opacity:1},
        {width:fs.w+'px', maxHeight:fs.h+'px', transform:'scale(.95) translateY(2px)', opacity:.58}],
-      {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
+      {duration:500, easing:'cubic-bezier(.3,.1,.25,1)'   /* V34FIX26 · 前段平缓：缩小匀速，maxScroll 每帧变化小 → scrollY 钳制平滑无跳（主人：跳变是因为缩小） */, fill:'forwards'}
     );
     a.style.transition=prevTrans[a];
     animA.onfinish=function(){
@@ -1272,6 +1272,9 @@ function expandCard(card){
     var target=Math.round(yBefore+(sy-yBefore)*pr);
     if(m>0 && target>m) target=m;
     if(target<0) target=0;
+    /* V34FIX27 · 掉帧 progress 突变限幅：每帧最多 ±10px，吸收突变平滑滚动 */
+    var yc=window.scrollY||doc.scrollTop;
+    if(Math.abs(target-yc)>10) target=yc+(target>yc?10:-10);
     if(Math.abs((window.scrollY||doc.scrollTop)-target)>1) doc.scrollTop=target;
     /* V34FIX9 · 水平跟随：按 B 展开补间的 eased progress 把 scrollLeft 从 startSL
        平滑插值到 sx（与卡片宽度动画同一节奏，视口胶片式左右滑动）。
@@ -1282,9 +1285,14 @@ function expandCard(card){
       var sl=startSL+(sx-startSL)*prog;
       if(sl>maxSL) sl=maxSL;
       if(sl<0) sl=0;
+      /* V34FIX27 · 水平同样限幅 ±10px/帧（掉帧 progress 突变防跳） */
+      if(Math.abs(sl-stage.scrollLeft)>10) sl=stage.scrollLeft+(sl>stage.scrollLeft?10:-10);
       if(Math.abs(sl-stage.scrollLeft)>0.5) stage.scrollLeft=sl;
     }
-    if(!allDone() || tail<3){
+    /* V34FIX27 · 循环条件：动画未完 或 scrollY/sl 未到位 或兜底 90 帧 → 继续 */
+    var yEnd=window.scrollY||doc.scrollTop;
+    var slEnd=stage.scrollLeft;
+    if(!allDone() || Math.abs(yEnd-sy)>1 || Math.abs(slEnd-sx)>1 || tail<90){
       if(allDone()) tail++;
       requestAnimationFrame(follow);
     }else{
@@ -1387,7 +1395,7 @@ function collapseCard(card){
   var animA=card.animate(
     [{width:aW, maxHeight:aH, transform:'scale(1) translateY(0)', opacity:1},
      {width:fW, maxHeight:fHvis, transform:'scale(.95) translateY(2px)', opacity:.58}],
-    {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
+    {duration:500, easing:'cubic-bezier(.3,.1,.25,1)'   /* V34FIX26 · 前段平缓：缩小匀速，maxScroll 每帧变化小 → scrollY 钳制平滑无跳（主人：跳变是因为缩小） */, fill:'forwards'}
   );
   animA.onfinish=function(){
     var yKeep=(window.scrollY||doc.scrollTop);           /* V34FIX13 · 防结尾闪跳 */
@@ -1419,14 +1427,22 @@ function collapseCard(card){
     var target=Math.round(startY+(syFold-startY)*pr);
     if(m>0 && target>m) target=m;                        /* clamp：不滚过最终 maxScroll */
     if(target<0) target=0;
-    if(Math.abs(y-target)>0.5) doc.scrollTop=target;
+    /* V34FIX27 · 动画时钟掉帧 → progress 突变 → target 突变 → scrollY 一帧跳几十 px
+       （实测 pr 0.039→0.246 一帧跳 54px）。target 每帧限幅 ±MAXSTEP，
+       吸收突变，滚动始终平滑（动画结束继续限幅滚到位，见循环条件）。 */
+    var yc=window.scrollY||doc.scrollTop;
+    if(Math.abs(target-yc)>10) target=yc+(target>yc?10:-10);
+    if(Math.abs(yc-target)>0.5) doc.scrollTop=target;
     /* V34FIX13 · 水平居中插值（与展开 sx 同节奏，视口胶片式滑动到折叠居中位） */
     var maxSL=stage.scrollWidth-stage.clientWidth;
     var sl=Math.round(startSL+(sxFold-startSL)*pr);
     if(sl>maxSL) sl=maxSL;
     if(sl<0) sl=0;
     if(Math.abs(sl-stage.scrollLeft)>0.5) stage.scrollLeft=sl;
-    if(animA.playState==='running'||animA.playState==='pending'||tail<3){
+    /* V34FIX27 · 循环条件：动画运行中 或 scrollY 未到位 或兜底 90 帧 → 继续；
+       动画结束但 scrollY 还在限幅逼近中（掉帧导致动画结束未到位）→ 继续滚到位才收尾。 */
+    var yEnd=window.scrollY||doc.scrollTop;
+    if(animA.playState==='running'||animA.playState==='pending'||Math.abs(yEnd-syFold)>1||tail<90){
       if(animA.playState!=='running'&&animA.playState!=='pending') tail++;
       requestAnimationFrame(follow);
     }else{
