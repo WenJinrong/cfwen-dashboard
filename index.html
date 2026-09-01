@@ -732,6 +732,30 @@
   }
 /* V32-END */
 
+/* V34-START · 展开/收起过渡动画（2026-09-01 主人要求） */
+  /* 目标：点卡片展开/收起时，宽度、高度、内容有平滑过渡，不再瞬间跳变。
+     方案（纯 CSS，不动 V30A 等高 / V32 缩放 / V33 KV 收缩 / JS）：
+       1) 卡片 transition 追加 width + max-height（沿用项目缓动 cubic-bezier(.16,1,.3,1)）
+       2) 折叠态补 max-height:260px 作为「高度过渡锚点」——展开时 260 → calc(100vh/fit-200) 平滑长高
+       3) 展开态 .h-body 播放入场动画：内容自下而上淡入
+     ⚠️ 收起方向：.h-body 是 display:none 硬切换（内容不可过渡），高度会随内容消失瞬时回到 260；
+        靠 transform scale + opacity + width 三条过渡做「缩小、变淡、变窄」的连续收起感。
+        若日后要「收起也做高度渐变」，需改 activate() 延迟 remove active（另开一轮）。 */
+  .hcard {
+    transition: transform .4s cubic-bezier(.16,1,.3,1), opacity .4s,
+      border-color .3s, box-shadow .3s, background .3s, filter .3s,
+      width .5s cubic-bezier(.16,1,.3,1), max-height .5s cubic-bezier(.16,1,.3,1);
+  }
+  .hcard:not(.active):not(.hot) { max-height: 260px; }
+  @keyframes hbIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .hcard.active .h-body, .hcard.hot .h-body {
+    animation: hbIn .45s cubic-bezier(.16,1,.3,1);
+  }
+/* V34-END */
+
 </style>
 </head>
 <body>
@@ -1086,9 +1110,236 @@ function activate(a, b){
   if(!card || !card.classList) return;
   if(a && a.target && a.target.closest && a.target.closest('.h-body')) return;
   var was = card.classList.contains('active');
-  document.querySelectorAll('.hcard.active').forEach(function(c){ c.classList.remove('active'); });
-  if(!was){ card.classList.add('active'); fillBody(card); }
-  if(card.scrollIntoView) card.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
+  /* V34FIX8 · 展开路径：不再在此瞬时 remove active / cancel 动画——
+     旧版在这里把旧卡 A 瞬时折叠，文档高度骤降 → scrollTop 被浏览器钳制
+     （实测 1280x720 下 scrollY 271→144 下跳），B 展开后 follow 逐帧拉回，
+     中间 50~200ms 卡在 228 → 主人看到的「切换往下卡一下」。
+     旧卡的收起补间与 B 的展开补间改由 expandCard 同一帧启动（高度连续变化）。 */
+  if(!was){ expandCard(card); return; }
+  /* V34FIX10 · 收起路径也加动画（主人要求）：不再瞬时 remove active——
+     折叠态 .h-body 是 display:none，瞬时摘除会内容消失 + 高度骤塌（生硬）。
+     改走 collapseCard：保持 active、内容随 max-height 平滑压缩、动画结束再摘除。 */
+  collapseCard(card);
+}
+/* V34FIX3 · 展开动画 + 同步滚动（2026-09-01 主人要求：居中 + 往下露出下方卡片标题 + 不许「过一阵才弹」）
+   两个坑（真机实测）：
+   1) CSS transition 的 width/max-height 会让 scrollIntoView 按「过渡起点小尺寸」(320x260) 算滚动目标
+      → 展开后偏右 336px、垂直不滚。必须按「最终布局」手动滚动。
+   2) 回折叠→双 rAF→再 add active 重播 CSS transition 时，过渡起点仍被上一次渲染的最终值污染
+      → 动画不重播（0.08s 已呈最终尺寸）。CSS transition 起点不可靠。
+   方案：width/max-height 改用 Web Animations API 显式补间（from 折叠值 → to 最终值，必定重播）；
+   水平滚动一步到位（stage.scrollWidth 恒定）；垂直滚动因 document scrollHeight 随卡片长高才扩展，
+   必须在动画期间逐帧跟随（每帧把 scrollTop 拉向目标）——从动画第一帧就开始动，无延迟弹跳。 */
+function expandCard(card){
+  var stage=card.closest('.stage')||document.querySelector('.stage');
+  /* V34FIX8 · 切换双补间总览：
+     旧卡 A（此前 active）的「收起补间」与本卡 B 的「展开补间」同一渲染帧启动——
+     A 高度下降与 B 高度上升重叠进行 → 文档高度连续变化 → scrollY 不被骤钳
+     （旧版瞬时折叠 A → 高度骤降 → scrollTop 被钳制 271→144，B 长高后 follow 逐帧拉回，
+     中间卡 228 约 200ms → 主人看到的「切换往下卡一下」）。
+     A 收起期间必须保持 active：折叠态 .h-body 是 display:none（CSS 584 行），
+     不保持 active 内容会瞬时消失、max-height 动画沦为空壳；
+     动画结束后摘除 active，CSS 折叠态接管（终值一致，无跳变）。 */
+  var cards=[].slice.call(stage.querySelectorAll('.hcard'));
+  /* 先取消所有卡残留的 WAAPI 补间（防尺寸串台），再记录当前 active 的旧卡列表 */
+  cards.forEach(function(c){ if(c.getAnimations) c.getAnimations().forEach(function(an){ an.cancel(); }); });
+  void stage.offsetWidth;
+  var prevActives=[].slice.call(document.querySelectorAll('.hcard.active'));
+  /* V34FIX4 · 量最终布局前，先把 stage 内所有卡瞬时回折叠态：
+     若此前有别卡正在收起过渡（width 1100→320 未走完），其宽度仍 >320，
+     会污染本卡 offsetLeft（偏大 → sx 偏大 → 展开后卡片卡在左边，主人实测「一些卡在左边」）。
+     做法：临时禁全部卡的 transition + 摘除所有 active + reflow，量完布局再逐个恢复 transition。 */
+  var prevTrans={};
+  cards.forEach(function(c){ prevTrans[c]=c.style.transition; c.style.transition='none'; });
+  prevActives.forEach(function(c){ if(c!==card) c.classList.remove('active'); });
+  if(card.classList.contains('active')) card.classList.remove('active');
+  void stage.offsetWidth;
+  /* 记录每张旧卡的「折叠尺寸」= 其收起补间终值（此刻全部卡处于折叠态） */
+  var foldSizes={};
+  prevActives.forEach(function(c){ foldSizes[c]={w:c.offsetWidth, h:c.offsetHeight}; });
+  card.classList.add('active');            /* ① 最终态（过渡先禁用） */
+  fillBody(card);
+  var prevT=card.style.transition;
+  card.style.transition='none';
+  void card.offsetWidth;
+  var offL=card.offsetLeft, finalW=card.offsetWidth, finalH=card.offsetHeight;
+  var pageTop=card.getBoundingClientRect().top+window.scrollY;
+  var sw=stage.scrollWidth, cw=stage.clientWidth;
+  card.classList.remove('active');          /* ② 回折叠（仍无过渡，立即跳） */
+  void card.offsetWidth;
+  var w0=card.offsetWidth, h0=card.offsetHeight;   /* 折叠尺寸 = 动画起点 */
+  var sx=Math.max(0, Math.min(sw-cw, offL+finalW/2-cw/2));
+  /* V34FIX7 · 垂直目标「居中」+ 单位终修（V34FIX5/FIX6 的教训，主人实测「其他窗口大小不能居中」）。
+     ⚠️ zoom 页面单位铁律（逐项实测确认）：
+     - 水平滚动容器 = .stage（zoom 子树内）：scrollLeft/offsetLeft/offsetWidth/clientWidth 全为逻辑单位
+       → sx = offL+finalW/2-cw/2 全逻辑，成立（各视口 delta≈0）。
+     - 垂直滚动容器 = document 视口（不缩放）：scrollY/scrollTop 为物理单位！
+       → 必须全物理：rTop(物理) + scrollY(物理) + finalH×fit/2(物理) - innerHeight/2(物理)。
+     - 旧公式把 finalH 当物理、innerHeight 当逻辑混算 → 矮视口滚过头、卡片顶部伸出视口
+       （实测 1024 下 scrollY=438 时 top=-109.9 = 328.1-438，1:1 物理滚动，坐实单位）。 */
+  var rTop=card.getBoundingClientRect().top;
+  var fit=parseFloat(getComputedStyle(document.querySelector('.wrap')).zoom)||1;
+  var sy=Math.max(0, rTop+(window.scrollY||document.documentElement.scrollTop)+finalH*fit/2-window.innerHeight/2);
+  cards.forEach(function(c){ c.style.transition=prevTrans[c]; });   /* ③ 恢复全部卡过渡 */
+  /* V34FIX9 · 水平滚动不再一步到位：记录切换前 scrollLeft，在 follow() 里按
+     B 展开补间的 eased progress 平滑插值到 sx —— 视口像胶片一样左右滑动到目标卡，
+     主人要求「左右打开切换胶片也加个动画」（旧版一步到位 + A 缩 B 展 → 像直接替换）。 */
+  var startSL=stage.scrollLeft;
+  /* ④ 双补间同步块（V34FIX8）：B 展开补间 + 各旧卡 A 收起补间同一渲染帧启动。
+     - B：add active（CSS 终值就位，同步 JS 期间不渲染）→ WAAPI 补间 from 折叠值 → to 终值，
+       动画层优先级更高 → 视觉从 w0/h0 长起，无终值闪帧、必定重播。
+     - A：恢复 active（.h-body 重新可见，内容随 max-height 被平滑压缩）
+       → WAAPI 收起补间 from 展开值 → to 折叠值（fill:forwards 防止结束后 CSS 展开态跳变）
+       → onfinish：摘除 active + cancel 动画（CSS 折叠态接管，值一致无跳变）。
+       注意：恢复 active 会重播 .h-body 的 hbIn 淡入动画 → 临时禁掉，收起期间内容不闪。 */
+  var anims=[];
+  card.style.transition='none';
+  card.classList.add('active');
+  void card.offsetWidth;
+  var anim=card.animate(
+    [{width:w0+'px', maxHeight:h0+'px'},{width:finalW+'px', maxHeight:finalH+'px'}],
+    {duration:500, easing:'cubic-bezier(.16,1,.3,1)'}
+  );
+  card.style.transition=prevT;
+  anims.push(anim);
+  prevActives.forEach(function(a){
+    if(a===card) return;
+    var aBody=a.querySelector('.h-body');
+    var prevAni=aBody?aBody.style.animation:null;
+    if(aBody) aBody.style.animation='none';   /* 防 hbIn 重新淡入 */
+    a.style.transition='none';
+    a.classList.add('active');                /* 恢复展开态，.h-body 可见 */
+    void a.offsetWidth;
+    var aW=a.offsetWidth, aH=a.offsetHeight;  /* 展开尺寸 = 收起补间起点 */
+    var fs=foldSizes[a]||{w:w0,h:h0};         /* 折叠尺寸 = 收起补间终点 */
+    var animA=a.animate(
+      [{width:aW+'px', maxHeight:aH+'px'},{width:fs.w+'px', maxHeight:fs.h+'px'}],
+      {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
+    );
+    a.style.transition=prevTrans[a];
+    animA.onfinish=function(){
+      a.classList.remove('active');           /* 内容消失，折叠态接管 */
+      animA.cancel();                         /* 移除 forwards 残留（值一致，无跳变） */
+      if(aBody) aBody.style.animation=prevAni;
+    };
+    anims.push(animA);
+  });
+  /* ⑤ 垂直滚动跟随：卡片长高 → document scrollHeight 同步扩展 → 每帧把 scrollTop 拉向 sy，
+     直至动画结束（卡片底部+24px 进视口，下方小卡片标题露出）。
+     ⚠️ 三个坑（真机实测）：
+     a) 全局 `html{scroll-behavior:smooth}` 会让每次 scrollTop 赋值变成平滑滚动动画，
+        逐帧跟随互相打断、被节流 → 前 400ms 位置几乎不动、动画快结束才一次性落地。
+        动画期间临时切 inline scroll-behavior:auto（inline 优先于 stylesheet）。
+     b) window.scrollTo 在本页（zoom 缩放）下调用被吞 → 用 documentElement.scrollTop 直接赋值。
+     c) scroll anchoring 会把 scrollTop 吸回锚点，与跟随打架 → 动画期间临时 overflow-anchor:none。
+        实测 inline `doc.style.overflowAnchor` 在 zoom 页面不生效（scrollY 增量=scrollHeight 增量，
+        卡片长高时锚定把 scrollTop 推到文档底部）→ 改用 style 标签注入
+        `html,body{overflow-anchor:none!important}`（!important 压过一切），动画结束移除。 */
+  var doc=document.documentElement;
+  var prevSB=doc.style.scrollBehavior;
+  var anchorSt=document.createElement('style');
+  anchorSt.id='__cfv35_anchor_off';
+  anchorSt.textContent='html, body { overflow-anchor: none !important; }';
+  document.head.appendChild(anchorSt);
+  doc.style.scrollBehavior='auto';
+  /* V34FIX8 · follow 等到「全部动画」（B 展开 + A 收起）结束，再额外跑 3 帧：
+     吸收 A 的 onfinish 摘除 active（.h-body 消失）引起的最后高度变化，避免收尾跳变。 */
+  var tail=0;
+  function allDone(){
+    return !anims.some(function(an){ return an.playState==='running'||an.playState==='pending'; });
+  }
+  function follow(){
+    var m=doc.scrollHeight-window.innerHeight;
+    if(m>0){
+      var t=Math.min(sy,m);
+      if(Math.abs(t-(window.scrollY||doc.scrollTop))>1) doc.scrollTop=t;
+    }
+    /* V34FIX9 · 水平跟随：按 B 展开补间的 eased progress 把 scrollLeft 从 startSL
+       平滑插值到 sx（与卡片宽度动画同一节奏，视口胶片式左右滑动）。
+       sx 是「全折叠布局」的最终目标（V34FIX4，不卡左边）；动画中 A 变宽时
+       scrollWidth 变大，clamp 到当前上限，A 收窄后最终精确落位 sx。 */
+    var prog=null;
+    anims.forEach(function(an){
+      if(an.playState==='running'||an.playState==='pending'){
+        var p=an.effect.getComputedTiming().progress;
+        if(p!==null){ if(prog===null || p>prog) prog=p; }
+      }
+    });
+    if(prog!==null){
+      var maxSL=stage.scrollWidth-stage.clientWidth;
+      var sl=startSL+(sx-startSL)*prog;
+      if(sl>maxSL) sl=maxSL;
+      if(sl<0) sl=0;
+      if(Math.abs(sl-stage.scrollLeft)>0.5) stage.scrollLeft=sl;
+    }
+    if(!allDone() || tail<3){
+      if(allDone()) tail++;
+      requestAnimationFrame(follow);
+    }else{
+      var as=document.getElementById('__cfv35_anchor_off');
+      if(as) as.parentNode.removeChild(as);
+      doc.style.scrollBehavior=prevSB;
+    }
+  }
+  requestAnimationFrame(follow);
+}
+/* V34FIX10 · 收起动画（主人要求「收起也加个动画」）：
+   与切换时旧卡 A 的收起补间同一思路（V34FIX8）——
+   折叠态 .h-body 是 display:none（CSS 584 行），必须保持 active 直到动画结束，
+   内容才会随 max-height 平滑压缩（否则内容瞬时消失、高度动画沦为空壳）。
+   流程：cancel 残留动画 → 量展开尺寸 → 瞬时折叠量折叠尺寸 → 恢复 active
+   → WAAPI 补间 from 展开值 → to 折叠值（fill:forwards 防结束跳变）
+   → onfinish：摘除 active + cancel（CSS 折叠态接管，值一致无跳变）。
+   垂直：文档高度连续下降，scrollTop 由浏览器连续钳制（平滑小步），无居中目标，
+   仅压制锚定 + smooth 防跳变。 */
+function collapseCard(card){
+  var stage=card.closest('.stage')||document.querySelector('.stage');
+  var cards=[].slice.call(stage.querySelectorAll('.hcard'));
+  cards.forEach(function(c){ if(c.getAnimations) c.getAnimations().forEach(function(an){ an.cancel(); }); });
+  void stage.offsetWidth;
+  var aW=card.offsetWidth, aH=card.offsetHeight;        /* 展开尺寸 = 补间起点 */
+  var prevT=card.style.transition;
+  card.style.transition='none';
+  card.classList.remove('active');                       /* 瞬时折叠，量折叠尺寸 */
+  void stage.offsetWidth;
+  var fW=card.offsetWidth, fH=card.offsetHeight;        /* 折叠尺寸 = 补间终点 */
+  card.classList.add('active');                          /* 恢复展开态（同步 JS 不渲染） */
+  card.style.transition=prevT;
+  void card.offsetWidth;
+  var aBody=card.querySelector('.h-body');
+  var prevAni=aBody?aBody.style.animation:null;
+  if(aBody) aBody.style.animation='none';                /* 防 hbIn 重新淡入 */
+  var animA=card.animate(
+    [{width:aW+'px', maxHeight:aH+'px'},{width:fW+'px', maxHeight:fH+'px'}],
+    {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
+  );
+  animA.onfinish=function(){
+    card.classList.remove('active');                     /* 内容消失，折叠态接管 */
+    animA.cancel();                                      /* 移除 forwards 残留（值一致无跳变） */
+    if(aBody) aBody.style.animation=prevAni;
+  };
+  var doc=document.documentElement;
+  var prevSB=doc.style.scrollBehavior;
+  var anchorSt=document.createElement('style');
+  anchorSt.id='__cfv35_anchor_off';
+  anchorSt.textContent='html, body { overflow-anchor: none !important; }';
+  document.head.appendChild(anchorSt);
+  doc.style.scrollBehavior='auto';
+  var tail=0;
+  function follow(){
+    var m=doc.scrollHeight-window.innerHeight;
+    var y=window.scrollY||doc.scrollTop;
+    if(m>0 && y>m && Math.abs(y-m)>1) doc.scrollTop=m;   /* 保险：跟随 maxScroll 下移（连续小幅） */
+    if(animA.playState==='running'||animA.playState==='pending'||tail<3){
+      if(animA.playState!=='running'&&animA.playState!=='pending') tail++;
+      requestAnimationFrame(follow);
+    }else{
+      var as=document.getElementById('__cfv35_anchor_off');
+      if(as) as.parentNode.removeChild(as);
+      doc.style.scrollBehavior=prevSB;
+    }
+  }
+  requestAnimationFrame(follow);
 }
 function toggleEntry(head){
   const e=head.closest('.entry, .tl-node, .hcard');
