@@ -1012,15 +1012,15 @@ function stopVideos(root){
   if(!root || !root.querySelectorAll) return;
   root.querySelectorAll('video.video-player').forEach(function(v){
     try{ v.pause(); }catch(e){}
+    /* V34FIX50 · 本地视频也彻底停止：存 origSrc + 清 src + load（防止 pause 后仍占用） */
+    if(v.src && !v.paused){ try{ v.dataset.origSrc=v.src; v.dataset.stopped='1'; v.removeAttribute('src'); v.load(); }catch(e){} }
   });
   root.querySelectorAll('iframe.video-player').forEach(function(f){
     try{ f.contentWindow.postMessage(JSON.stringify({event:'command', func:'pauseVideo', args:[]}), '*'); }catch(e){}
-    /* V34FIX49 · postMessage 常不响应（B站无公开暂停协议）→ about:blank 卸载 + 60ms 恢复重载强制停止：
-       重载后 autoplay=0 不自动播，src 保留不影响重新展开。 */
+    /* V34FIX50 · 彻底停止：存 origSrc + 清 src（about:blank）——B站播放器重载后可能记住状态继续播，
+       只有卸载（清 src）才绝对停；src 由 expandCard 展开时恢复（autoplay=0 不自动播）。 */
     if(f.src && /player\.bilibili|bilibili/.test(f.src)){
-      var s=f.src;
-      try{ f.src='about:blank'; }catch(e){}
-      setTimeout(function(){ if(f.isConnected && f.src==='about:blank'){ try{ f.src=s; }catch(e){} } }, 60);
+      try{ f.dataset.origSrc=f.src; f.dataset.stopped='1'; f.src='about:blank'; }catch(e){}
     }
   });
 }
@@ -1165,6 +1165,16 @@ function expandCard(card){
   prevActives.forEach(function(c){ foldSizes[c]={w:c.offsetWidth, h:c.offsetHeight}; });
   card.classList.add('active');            /* ① 最终态（过渡先禁用） */
   fillBody(card);
+  /* V34FIX50 · 展开时恢复被停止的视频（stopVideos 清了 src）：宽 selector + dataset 检查 */
+  card.querySelectorAll('.h-body iframe.video-player, .h-body video.video-player').forEach(function(f){
+    if(f.dataset && f.dataset.stopped && f.dataset.origSrc){
+      try{
+        f.src=f.dataset.origSrc;
+        if(f.tagName==='VIDEO') f.load();
+      }catch(e){}
+      delete f.dataset.stopped; delete f.dataset.origSrc;
+    }
+  });
   var prevT=card.style.transition;
   card.style.transition='none';
   void card.offsetWidth;
