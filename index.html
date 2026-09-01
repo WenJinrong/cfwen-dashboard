@@ -1222,7 +1222,10 @@ function expandCard(card){
   var prevSB=doc.style.scrollBehavior;
   var anchorSt=document.createElement('style');
   anchorSt.id='__cfv35_anchor_off';
-  anchorSt.textContent='html, body { overflow-anchor: none !important; }';
+  /* V34FIX20 · 必须覆盖 .stage（V34FIX14 只改了 collapseCard 的 anchorSt，这里漏了）：
+     展开切换时旧卡收窄/新卡变宽的布局变化会触发 stage 水平 scroll anchoring →
+     scrollLeft 被拉回锚点，与 follow 的 eased 插值打架 → 主人实测「打开横向切换时会抖一下」。 */
+  anchorSt.textContent='html, body, .stage { overflow-anchor: none !important; }';
   document.head.appendChild(anchorSt);
   doc.style.scrollBehavior='auto';
   /* V34FIX8 · follow 等到「全部动画」（B 展开 + A 收起）结束，再额外跑 3 帧：
