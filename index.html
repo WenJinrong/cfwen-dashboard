@@ -1015,6 +1015,13 @@ function stopVideos(root){
   });
   root.querySelectorAll('iframe.video-player').forEach(function(f){
     try{ f.contentWindow.postMessage(JSON.stringify({event:'command', func:'pauseVideo', args:[]}), '*'); }catch(e){}
+    /* V34FIX49 · postMessage 常不响应（B站无公开暂停协议）→ about:blank 卸载 + 60ms 恢复重载强制停止：
+       重载后 autoplay=0 不自动播，src 保留不影响重新展开。 */
+    if(f.src && /player\.bilibili|bilibili/.test(f.src)){
+      var s=f.src;
+      try{ f.src='about:blank'; }catch(e){}
+      setTimeout(function(){ if(f.isConnected && f.src==='about:blank'){ try{ f.src=s; }catch(e){} } }, 60);
+    }
   });
 }
 
