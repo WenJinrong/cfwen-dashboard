@@ -443,7 +443,7 @@
     background-size:5px 5px; }
   @keyframes htDrift { from{background-position:0 0;} to{background-position:5px 5px;} }
   /* 横向胶片条 */
-  .stage { position:relative; overflow-x:auto; overflow-y:visible; padding:18px 0 10px; z-index:1; scroll-behavior:auto; scrollbar-width:none; -ms-overflow-style:none; }
+  .stage { position:relative; overflow-x:auto; overflow-y:visible; padding:18px 0 10px; z-index:1; scroll-behavior:auto; scrollbar-width:none; -ms-overflow-style:none; overflow-anchor:none; }
   .stage::-webkit-scrollbar { display:none; }
   /* V34FIX19d · 内嵌像素字体 Press Start 2P（woff2 base64，自包含离线可用） */
   @font-face {
@@ -591,7 +591,11 @@
   .detail::after, .detail.expanded::after { content:""; }
 
   /* V26-INTERACT · 首尾留白使端卡可居中 + 悬停轻高亮(不撑大，避免边界闪烁) */
-  .filmstrip { padding-left:calc(50% - 180px) !important; padding-right:calc(50% - 180px) !important; }
+  /* V34FIX41 · padding-left = calc(50% - 550px)（550=展开卡半宽 1100/2）：
+     前几张卡展开时 sx=offL+550-cw/2 ≈ 0（可居中，主人：前几卡打开不在最中间）；
+     同时默认 scrollLeft 设为同值（render 里）→ 第一张卡左缘=视口左缘（默认/关闭/圆盘最左在左，
+     resize 不随视窗变）。calc(50%) 随 stage 宽自适应。 */
+  .filmstrip { padding:10px calc(50% - 550px) !important; }
   .hcard:not(.active):hover { opacity:.95; transform:scale(1) translateY(0); filter:brightness(1.18); border-color:var(--accent); box-shadow:0 12px 30px -12px rgba(0,0,0,.6); z-index:4; }
 
   
@@ -1325,19 +1329,23 @@ function collapseCard(card){
   var fWn=card.offsetWidth, fHn=card.offsetHeight;      /* 折叠尺寸数值（sxFold 布局计算用） */
   var csF=getComputedStyle(card);
   var fW=csF.width, fH=csF.maxHeight;                   /* 折叠态 CSS 值（WAAPI to） */
-  /* V34FIX12/13 · 收起后「垂直 + 水平」双轴居中（主人：关闭后没居中→居中=左右居中→垂直也要）。
-     此刻全卡折叠 → 垂直目标 syFold 用全物理公式（视觉高 rFoldH，详见 V34FIX12）；
-     水平目标 sxFold 用全逻辑公式（offL+fW/2-cw/2，与 expandCard 的 sx 同套，zoom 单位铁律）。
-     动画期间双轴按 eased progress 平滑插值——卡片缩小的同时视口平滑滑动，
-     两个方向都把它保持在中央。 */
+  /* V34FIX37 · 收起后「垂直居中 + 水平回行首」（主人 2026-09-01 新规：卡片打开时都在中间，
+     关闭时行填满/第一张卡在左侧——推翻 V34FIX12/13 的「收起后水平居中」）。
+     垂直目标 syFold 保留（全物理，视觉高 rFoldH）；水平目标改为 0（行起点，第一张卡左侧，
+     折叠卡 360 宽自然填满视口）。 */
   var rTopFold=card.getBoundingClientRect().top;
   var yNow=(window.scrollY||doc.scrollTop);
   var pageTopFold=rTopFold+yNow;
   var rFoldH=card.getBoundingClientRect().height;      /* 折叠态视觉高（物理） */
   var syFold=Math.max(0, pageTopFold+rFoldH/2-window.innerHeight/2);
-  var foldOffL=card.offsetLeft;                         /* 折叠态水平位置（逻辑） */
+  var foldOffL=card.offsetLeft;                         /* 折叠态水平位置（逻辑，收尾校准备用） */
   var cw=stage.clientWidth;
-  var sxFold=Math.max(0, Math.min(stage.scrollWidth-cw, foldOffL+fWn/2-cw/2));
+  var sxFold=0;                                          /* V34FIX37 · 收起后行起点（行填满） */
+  /* V34FIX38 · 行首 = 第一张折叠卡的 offsetLeft（filmstrip 有居中 padding calc(50%-180px)，
+     scrollLeft=0 时第一张卡反而在视口中心！→ 主人：第一张卡关闭应在左边。
+     滚动到第一张卡 offsetLeft → 其左缘对齐视口左缘 → 行从左侧填满。 */
+  var firstCard=stage.querySelector('.hcard');
+  if(firstCard) sxFold=firstCard.offsetLeft;
   card.classList.add('active');                          /* 恢复展开态（同步 JS 不渲染） */
   card.style.transition=prevT;
   doc.scrollTop=yBefore;                                 /* V34FIX13 · 恢复 scrollY：
@@ -1411,7 +1419,7 @@ function collapseCard(card){
       if(m2>0 && syF2>m2) syF2=m2;
       if(Math.abs((window.scrollY||doc.scrollTop)-syF2)>1) doc.scrollTop=syF2;
       var maxSL2=stage.scrollWidth-stage.clientWidth;
-      var sl2=Math.max(0, Math.min(maxSL2, Math.round(card.offsetLeft+fWn/2-stage.clientWidth/2)));
+      var sl2=sxFold;   /* V34FIX37/38 · 收起后行首（第一张折叠卡左缘对齐视口左缘，行填满） */
       if(Math.abs(sl2-stage.scrollLeft)>1) stage.scrollLeft=sl2;
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
@@ -1608,6 +1616,15 @@ function render(){
   var TICK=(function(){ var s='CF&nbsp;&nbsp;CFM&nbsp;&nbsp;CFHD&nbsp;&nbsp;&nbsp;&nbsp;COMPETITIVE&nbsp;&nbsp;INTELLIGENCE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;';
     var r=''; for(var i=0;i<10;i++) r+=s; return r; })();
   listEl.innerHTML='<div class="stage" id="film"><div class="filmstrip">'+cards+'</div></div>'+dial;
+  /* V34FIX43 · 默认位置（第一张卡左缘=视口左缘）延迟到布局稳定后设置：
+     render 同步时 stage clientWidth/offsetLeft 未就绪（实测算出 19），双 rAF 后正确（385）。 */
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      var fs=document.getElementById('film');
+      var first=fs?fs.querySelector('.hcard'):null;
+      if(fs && first) fs.scrollLeft=first.offsetLeft;
+    });
+  });
   /* V34FIX19 · 填充底部字幕内容（静态容器在 body，渲染时刷新） */
   var tb=document.getElementById('tickBot'); if(tb) tb.innerHTML=TICK;
 }
@@ -1813,17 +1830,21 @@ render();
     h.setAttribute('cy', cy.toFixed(1));
   }
   /* 卡片中心缓存：渲染时算一次，滚动时不再逐卡 getBoundingClientRect（避免每帧 reflow 卡顿） */
-  var cardEls=[], cardCenters=[];
+  var cardEls=[], cardCenters=[], minSL=0;
   function cacheCards(){
     var stage=getStage(); if(!stage) return;
     cardEls=Array.prototype.slice.call(stage.querySelectorAll('.hcard'));
     cardCenters=cardEls.map(function(c){ return c.offsetLeft + c.offsetWidth/2; });
+    /* V34FIX42 · minSL = 第一张折叠卡 offsetLeft = 「默认位置」：圆盘最左(p=0) ↔ scrollLeft=minSL
+       （第一张卡左缘对齐视口左缘），而不是 scrollLeft=0（主人：圆盘到最左边=默认打开的位置） */
+    minSL=cardEls.length?cardEls[0].offsetLeft:0;
   }
   function updateActive(){
     var stage=getStage();
     if(!stage) return;
     var max=stage.scrollWidth-stage.clientWidth;
-    var p=max>0?stage.scrollLeft/max:0;
+    var p=(max>minSL)?(stage.scrollLeft-minSL)/(max-minSL):0;
+    p=Math.max(0,Math.min(1,p));
     setDialHandle(p);
     var mid=stage.scrollLeft+stage.clientWidth/2, best=null, bestD=1e9;
     for(var i=0;i<cardCenters.length;i++){
@@ -1843,6 +1864,13 @@ render();
     var stage=getStage(); if(!stage) return;
     cacheCards();
     stage.addEventListener('scroll', updateActive, {passive:true});
+    /* V34FIX42 · 拉伸窗口后保持「默认位置」（第一张卡在左）：resize 重算 minSL，
+       无展开卡时 scrollLeft 归位 minSL（主人：拉伸窗口后也要保持） */
+    window.addEventListener('resize', function(){
+      var s=getStage(); if(!s) return;
+      cacheCards();
+      if(!document.querySelector('.hcard.active')) s.scrollLeft=minSL;
+    });
     stage.addEventListener('wheel', function(e){
       var horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
       if(!horizontal) return;
@@ -1873,13 +1901,15 @@ render();
     function setScroll(p){
       p=Math.max(0,Math.min(1,p));
       var max=stage.scrollWidth-stage.clientWidth;
-      if(max>0) stage.scrollLeft=p*max;
+      /* V34FIX42 · 圆盘最左(p=0) → scrollLeft=minSL（默认位置，第一张卡在视口左缘） */
+      if(max>minSL) stage.scrollLeft=minSL+p*(max-minSL);
+      else stage.scrollLeft=0;
       setDialHandle(p);
     }
     function inertia(){
       if(!dragging && Math.abs(vel)>0.00015){
         var max=stage.scrollWidth-stage.clientWidth;
-        var p=max>0?stage.scrollLeft/max:0;
+        var p=(max>minSL)?(stage.scrollLeft-minSL)/(max-minSL):0;   /* V34FIX42 · 圆盘最左=minSL */
         var np=p+vel;
         if(np<=0||np>=1){ np=Math.max(0,Math.min(1,np)); vel=0; }
         setScroll(np); vel*=0.94;
@@ -1904,7 +1934,7 @@ render();
       stopInertia(); dragging=true;
       pivot=pivotOf();
       var max=stage.scrollWidth-stage.clientWidth;
-      var p=max>0?stage.scrollLeft/max:0;
+      var p=(max>minSL)?(stage.scrollLeft-minSL)/(max-minSL):0;   /* V34FIX42 */
       var handleAng=Math.PI - p*Math.PI;   // 当前手柄所在角度
       contAng=pointerAngle(e);
       grabOffset=handleAng - contAng;       // 抓住点相对手柄的角度差，保证手柄贴合手指
@@ -1966,7 +1996,22 @@ render();
   if(typeof render==='function'){
     var _o=render;
     // 打开页面 / 切换分类时均不自动展开任何胶片（保持全部关闭）
-    render=function(){_o();bindStage();updateActive();refitSoon();};
+    render=function(){_o();bindStage();updateActive();refitSoon();
+      /* V34FIX43 · 布局稳定后重算 minSL 并归位默认位置（第一张卡在左） */
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        cacheCards();
+        var s=getStage();
+        if(s && !document.querySelector('.hcard.active')) s.scrollLeft=minSL;
+      }); });
+      /* V34FIX44 · 500ms 兜底：refitSoon（zoom 重算）异步完成后 offsetLeft 才稳定，
+         双 rAF 时可能未稳（实测 scrollLeft=minSL 旧值 → 左缘 104px）。 */
+      setTimeout(function(){
+        cacheCards();
+        var s=getStage();
+        var first=s?s.querySelector('.hcard'):null;
+        if(s && first && !document.querySelector('.hcard.active')) s.scrollLeft=first.offsetLeft;
+      }, 500);
+    };
     render();
     refit();   // 首次同步定档，避免先按 fit=1 画一帧再跳到缩放态
   }
