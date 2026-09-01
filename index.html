@@ -998,7 +998,10 @@ function tlNode(r, i, total){
 }
 function closeCard(el){
   var c = el && el.closest ? el.closest('.hcard') : null;
-  if(c){ c.classList.remove('active'); c.classList.remove('hot'); }
+  /* V34FIX11 · 关闭按钮（×）也走收起补间动画（主人要求「关闭卡片的动画」）——
+     旧版瞬时 remove active：折叠态 .h-body 是 display:none，内容消失 + 高度骤塌，生硬。
+     复用 collapseCard（V34FIX10）：保持 active、内容随 max-height 平滑压缩、动画结束再摘除。 */
+  if(c) collapseCard(c);
 }
 /* V29A · 顶部 KV 点击行为分流：折叠态 → 让事件冒泡给卡片的 activate() 展开详情页；
    展开态 → 才打开大图灯箱（光标由 CSS 按状态区分：折叠 pointer / 展开 zoom-in） */
@@ -1011,91 +1014,6 @@ function thumbClick(e, img){
     return;
   }
   /* 折叠态：不 stopPropagation，交给卡片自身的 onclick="activate(event,this)" */
-}
-function fillBody(card){
-  const idx=+card.dataset.idx;
-  const body=card.querySelector('.h-body');
-  if(body && body.getAttribute('data-filled')!=='1'){
-    body.innerHTML='<div>'+cardBody(DATA[idx])+'</div>';
-    body.setAttribute('data-filled','1');
-  }
-}
-function activate(a, b){
-  var card = (a && a.currentTarget) ? a.currentTarget : (b || a);
-  if(!card || !card.classList) return;
-  if(a && a.target && a.target.closest && a.target.closest('.h-body')) return;
-  var was = card.classList.contains('active');
-  document.querySelectorAll('.hcard.active').forEach(function(c){ c.classList.remove('active'); });
-  if(!was){ card.classList.add('active'); fillBody(card); }
-  if(card.scrollIntoView) card.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
-}
-function fillBody(card){
-  const idx=+card.dataset.idx;
-  const body=card.querySelector('.h-body');
-  if(body && body.getAttribute('data-filled')!=='1'){
-    body.innerHTML='<div>'+cardBody(DATA[idx])+'</div>';
-    body.setAttribute('data-filled','1');
-  }
-}
-function activate(a, b){
-  var card = (a && a.currentTarget) ? a.currentTarget : (b || a);
-  if(!card || !card.classList) return;
-  if(a && a.target && a.target.closest && a.target.closest('.h-body')) return;
-  var was = card.classList.contains('active');
-  document.querySelectorAll('.hcard.active').forEach(function(c){ c.classList.remove('active'); });
-  if(!was){ card.classList.add('active'); fillBody(card); }
-  if(card.scrollIntoView) card.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
-}
-function fillBody(card){
-  const idx=+card.dataset.idx;
-  const body=card.querySelector('.h-body');
-  if(body && body.getAttribute('data-filled')!=='1'){
-    body.innerHTML='<div>'+cardBody(DATA[idx])+'</div>';
-    body.setAttribute('data-filled','1');
-  }
-}
-function activate(a, b){
-  var card = (a && a.currentTarget) ? a.currentTarget : (b || a);
-  if(!card || !card.classList) return;
-  if(a && a.target && a.target.closest && a.target.closest('.h-body')) return;
-  var was = card.classList.contains('active');
-  document.querySelectorAll('.hcard.active').forEach(function(c){ c.classList.remove('active'); });
-  if(!was){ card.classList.add('active'); fillBody(card); }
-  if(card.scrollIntoView) card.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
-}
-function fillBody(card){
-  const idx=+card.dataset.idx;
-  const body=card.querySelector('.h-body');
-  if(body && body.getAttribute('data-filled')!=='1'){
-    body.innerHTML='<div>'+cardBody(DATA[idx])+'</div>';
-    body.setAttribute('data-filled','1');
-  }
-}
-function activate(a, b){
-  var card = (a && a.currentTarget) ? a.currentTarget : (b || a);
-  if(!card || !card.classList) return;
-  if(a && a.target && a.target.closest && a.target.closest('.h-body')) return;
-  var was = card.classList.contains('active');
-  document.querySelectorAll('.hcard.active').forEach(function(c){ c.classList.remove('active'); });
-  if(!was){ card.classList.add('active'); fillBody(card); }
-  if(card.scrollIntoView) card.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
-}
-function fillBody(card){
-  const idx=+card.dataset.idx;
-  const body=card.querySelector('.h-body');
-  if(body && body.getAttribute('data-filled')!=='1'){
-    body.innerHTML='<div>'+cardBody(DATA[idx])+'</div>';
-    body.setAttribute('data-filled','1');
-  }
-}
-function activate(a, b){
-  var card = (a && a.currentTarget) ? a.currentTarget : (b || a);
-  if(!card || !card.classList) return;
-  if(a && a.target && a.target.closest && a.target.closest('.h-body')) return;
-  var was = card.classList.contains('active');
-  document.querySelectorAll('.hcard.active').forEach(function(c){ c.classList.remove('active'); });
-  if(!was){ card.classList.add('active'); fillBody(card); }
-  if(card.scrollIntoView) card.scrollIntoView({behavior:'smooth', inline:'center', block:'nearest'});
 }
 function fillBody(card){
   const idx=+card.dataset.idx;
@@ -1303,6 +1221,19 @@ function collapseCard(card){
   card.classList.remove('active');                       /* 瞬时折叠，量折叠尺寸 */
   void stage.offsetWidth;
   var fW=card.offsetWidth, fH=card.offsetHeight;        /* 折叠尺寸 = 补间终点 */
+  /* V34FIX12 · 收起后居中（主人：卡片关闭后没居中）。
+     此刻全卡折叠、scrollY 尚未动 → rTopFold + scrollY = 折叠态物理页面顶部。
+     折叠居中目标 syFold 用与 expandCard 同一套「全物理」公式（zoom 单位铁律）：
+     sy = pageTop + finalH/2 − innerHeight/2。
+     ⚠️ 高度必须用 getBoundingClientRect().height（视觉物理高，实测折叠 153.1），
+     不能用 offsetHeight×zoom（逻辑 260×0.62=161.2，与视觉高差 8.1px →
+     zoom 渲染舍入误差）——用错高度 syFold 偏大 4px，scrollY 取整后又差 1px，
+     卡片中心偏上（实测 278.9 vs 视口中心 283）。 */
+  var rTopFold=card.getBoundingClientRect().top;
+  var yNow=(window.scrollY||document.documentElement.scrollTop);
+  var pageTopFold=rTopFold+yNow;
+  var rFoldH=card.getBoundingClientRect().height;      /* 折叠态视觉高（物理） */
+  var syFold=Math.max(0, pageTopFold+rFoldH/2-window.innerHeight/2);
   card.classList.add('active');                          /* 恢复展开态（同步 JS 不渲染） */
   card.style.transition=prevT;
   void card.offsetWidth;
@@ -1315,6 +1246,7 @@ function collapseCard(card){
   );
   animA.onfinish=function(){
     card.classList.remove('active');                     /* 内容消失，折叠态接管 */
+    card.classList.remove('hot');                        /* 防御：closeCard/ESC 场景同清 hot */
     animA.cancel();                                      /* 移除 forwards 残留（值一致无跳变） */
     if(aBody) aBody.style.animation=prevAni;
   };
@@ -1325,15 +1257,34 @@ function collapseCard(card){
   anchorSt.textContent='html, body { overflow-anchor: none !important; }';
   document.head.appendChild(anchorSt);
   doc.style.scrollBehavior='auto';
+  var startY=yNow;
   var tail=0;
   function follow(){
     var m=doc.scrollHeight-window.innerHeight;
     var y=window.scrollY||doc.scrollTop;
-    if(m>0 && y>m && Math.abs(y-m)>1) doc.scrollTop=m;   /* 保险：跟随 maxScroll 下移（连续小幅） */
+    var pr=0;
+    /* ⚠️ getComputedTiming 在 Animation 上不存在（undefined），必须是 effect 的方法；
+       直接用 animA.getComputedTiming() 抛 TypeError → catch → pr=1 → 失去平滑插值
+       （收起时 scrollY 从 startY 一步跳到目标，观感生硬）。 */
+    try{ pr=animA.effect.getComputedTiming().progress; }catch(e){ pr=1; }
+    if(!(pr>=0)) pr=1;
+    var target=Math.round(startY+(syFold-startY)*pr);   /* 取整：scrollY 对小数取整，
+       不取整会在第二帧因 |y-target|<0.5 提前停止（实测赋 130.92 → scrollY 取整 131） */
+    if(m>0 && target>m) target=m;                        /* clamp：不滚过最终 maxScroll */
+    if(target<0) target=0;
+    if(Math.abs(y-target)>0.5) doc.scrollTop=target;
     if(animA.playState==='running'||animA.playState==='pending'||tail<3){
       if(animA.playState!=='running'&&animA.playState!=='pending') tail++;
       requestAnimationFrame(follow);
     }else{
+      /* V34FIX12 · 收尾最终校准：动画结束 + 3 帧后布局已稳定，
+         flex 微移时按最新几何重算折叠居中位并一次性落位（无动画、无跳变感）。
+         高度同样用视觉物理高 rFoldH，目标取整避免 scrollY 取整误差。 */
+      var m2=doc.scrollHeight-window.innerHeight;
+      var y2=window.scrollY||doc.scrollTop;
+      var syF2=Math.round(Math.max(0, card.getBoundingClientRect().top+y2+rFoldH/2-window.innerHeight/2));
+      if(m2>0 && syF2>m2) syF2=m2;
+      if(Math.abs((window.scrollY||doc.scrollTop)-syF2)>1) doc.scrollTop=syF2;
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
       doc.style.scrollBehavior=prevSB;
@@ -1541,7 +1492,8 @@ document.addEventListener('keydown',e=>{
   }
   if(e.key==='Escape'){
     const open=document.querySelector('.hcard.active, .hcard.hot');
-    if(open){ open.classList.remove('active'); open.classList.remove('hot'); }
+    /* V34FIX11 · ESC 与 × 按钮行为一致，走收起补间动画 */
+    if(open) collapseCard(open);
   }
 });
 /* V29B · 全量读数：类型构成环形饼图（总体 + CF / CFM / CFHD），数字由 DATA 实时统计，不再硬编码 */
