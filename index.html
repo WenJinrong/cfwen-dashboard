@@ -650,14 +650,7 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;
   }
   .img-gallery .float-img { width: 100%; height: 130px; object-fit: contain; background: var(--bg-deep); border-radius: 2px; }
-  /* V34FIX25 · 非 gallery 的详情图（动图/单图）加 aspect-ratio 占位：loading=lazy 的图片
-     未加载时高度 0 → 加载后撑到 max-height 220 → 展开详情高度突变 → 页面上下跳
-     （主人：切换/打开时上下跳）。占位后加载前后布局一致，零跳动。 */
-  .hcard.active .float-img:not(.img-gallery .float-img),
-  .hcard.hot .float-img:not(.img-gallery .float-img) {
-    width:100%; max-height:220px; aspect-ratio:16/9; object-fit:contain;
-    background:var(--bg-deep); border-radius:2px;
-  }
+  .hcard.active .float-img:not(.img-gallery .float-img) { max-height: 220px; object-fit: contain; }
   /* V27B-END */
 
   /* V27C · 激活卡内：详情(左 col1) 与 活动配图(右 col2) 左右并排，分析跨整行；消除配图落到左下角 */
@@ -1107,19 +1100,6 @@ function expandCard(card){
   var cards=[].slice.call(stage.querySelectorAll('.hcard'));
   /* V34FIX19 · 展开时隐藏页面顶部/底部滚动字幕 */
   document.body.classList.add('film-open');
-  /* V34FIX21 · 垂直「往下抖」根因（主人实测）：V34FIX4 测量段会把所有 active 卡瞬时折叠
-     （摘除 active + reflow）→ 文档高度骤降 → 大视口下 scrollY 被 maxScroll 钳制
-     （scrollY 变小 → 页面内容下移 = 「往下抖」），且污染后续 rTop/sy（用钳后值算目标）。
-     修复：锚定/平滑抑制提前到所有折叠操作之前注入（V34FIX18/测量段都可能折叠卡），
-     记录 yBefore，量 rTop 前恢复 scrollY（同步 JS 内，渲染前落位，无跳变）。 */
-  var doc=document.documentElement;
-  var prevSB=doc.style.scrollBehavior;
-  var anchorSt=document.createElement('style');
-  anchorSt.id='__cfv35_anchor_off';
-  anchorSt.textContent='html, body, .stage { overflow-anchor: none !important; }';
-  document.head.appendChild(anchorSt);
-  doc.style.scrollBehavior='auto';
-  var yBefore=(window.scrollY||doc.scrollTop);
   /* V34FIX18 · 快速连续切换（间隔 <500ms）时「两个同时收起」的根因：
      旧卡 A 的收起补间（fill:forwards）在 expandCard 开头被 cancel → WAAPI forwards
      移除 → A 弹回 CSS active 展开态（视觉闪回）+ onfinish 不执行 → A active 残留
@@ -1200,8 +1180,7 @@ function expandCard(card){
   card.classList.add('active');
   void card.offsetWidth;
   var anim=card.animate(
-    [{width:w0+'px', maxHeight:h0+'px', transform:'scale(.95) translateY(2px)', opacity:.58},
-     {width:finalW+'px', maxHeight:finalH+'px', transform:'scale(1) translateY(0)', opacity:1}],
+    [{width:w0+'px', maxHeight:h0+'px'},{width:finalW+'px', maxHeight:finalH+'px'}],
     {duration:500, easing:'cubic-bezier(.16,1,.3,1)'}
   );
   card.style.transition=prevT;
@@ -1217,8 +1196,7 @@ function expandCard(card){
     var aW=a.offsetWidth, aH=a.offsetHeight;  /* 展开尺寸 = 收起补间起点 */
     var fs=foldSizes[a]||{w:w0,h:h0};         /* 折叠尺寸 = 收起补间终点 */
     var animA=a.animate(
-      [{width:aW+'px', maxHeight:aH+'px', transform:'scale(1) translateY(0)', opacity:1},
-       {width:fs.w+'px', maxHeight:fs.h+'px', transform:'scale(.95) translateY(2px)', opacity:.58}],
+      [{width:aW+'px', maxHeight:aH+'px'},{width:fs.w+'px', maxHeight:fs.h+'px'}],
       {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
     );
     a.style.transition=prevTrans[a];
@@ -1229,12 +1207,6 @@ function expandCard(card){
     };
     anims.push(animA);
   });
-  /* V34FIX22 · 恢复测量前 scrollY（主人：切换过程跳了一下）。
-     ⚠️ 不能在「量 rTop 前」恢复：此刻全卡折叠，maxScroll<yBefore → 恢复被浏览器
-     reflow 钳制白费（折叠态下 scrollY 物理上限=折叠 maxScroll）。
-     此刻双补间已启动（B add active，文档高度恢复展开态，maxScroll>yBefore）→
-     恢复才有效；渲染前落位 → 无跳变。follow 随后把 scrollY 平滑拉向 sy。 */
-  doc.scrollTop=yBefore;
   /* ⑤ 垂直滚动跟随：卡片长高 → document scrollHeight 同步扩展 → 每帧把 scrollTop 拉向 sy，
      直至动画结束（卡片底部+24px 进视口，下方小卡片标题露出）。
      ⚠️ 三个坑（真机实测）：
@@ -1246,25 +1218,32 @@ function expandCard(card){
         实测 inline `doc.style.overflowAnchor` 在 zoom 页面不生效（scrollY 增量=scrollHeight 增量，
         卡片长高时锚定把 scrollTop 推到文档底部）→ 改用 style 标签注入
         `html,body{overflow-anchor:none!important}`（!important 压过一切），动画结束移除。 */
+  var doc=document.documentElement;
+  var prevSB=doc.style.scrollBehavior;
+  var anchorSt=document.createElement('style');
+  anchorSt.id='__cfv35_anchor_off';
+  /* V34FIX20 · 必须覆盖 .stage（V34FIX14 只改了 collapseCard 的 anchorSt，这里漏了）：
+     展开切换时旧卡收窄/新卡变宽的布局变化会触发 stage 水平 scroll anchoring →
+     scrollLeft 被拉回锚点，与 follow 的 eased 插值打架 → 主人实测「打开横向切换时会抖一下」。 */
+  anchorSt.textContent='html, body, .stage { overflow-anchor: none !important; }';
+  document.head.appendChild(anchorSt);
+  doc.style.scrollBehavior='auto';
   /* V34FIX8 · follow 等到「全部动画」（B 展开 + A 收起）结束，再额外跑 3 帧：
-     吸收 A 的 onfinish 摘除 active（.h-body 消失）引起的最后高度变化，避免收尾跳变。
-     （doc/prevSB/anchorSt 已在函数开头提前注入——V34FIX21，此处不再重复） */
+     吸收 A 的 onfinish 摘除 active（.h-body 消失）引起的最后高度变化，避免收尾跳变。 */
   var tail=0;
   function allDone(){
     return !anims.some(function(an){ return an.playState==='running'||an.playState==='pending'; });
   }
-  /* V34FIX32 · 滚动彻底改为「CSS smooth + 一次赋值」——浏览器原生平滑滚动由合成器驱动
-     （不占主线程 → 284 卡页面动画不卡；无逐帧 scrollTop/scrollLeft 赋值 → 无 layout
-     thrashing、无插值时钟与 WAAPI 时钟错位的掉帧跳变）。
-     与 WAAPI 卡片动画并行平滑（约同 500ms）；收尾强制微调到位（smooth 已滚大部分，
-     剩余几 px 无感）。⚠️ 之前 V34FIX23/27/28 的逐帧 progress 插值/限幅全部作废。 */
-  doc.style.scrollBehavior='smooth';   /* 垂直：CSS smooth 一次赋值（距离小，合成器平滑） */
-  doc.scrollTop=sy;
-  /* 水平：不用 CSS smooth（距离大时长不可控 + 干扰逐帧插值），由 follow 按 progress 插值 */
   function follow(){
-    /* V34FIX33 · 水平逐帧插值（与动画同步）：CSS smooth 在 scrollLeft 距离大（几千 px）时
-       时长不可控（1s+）→ 动画结束还在滚（主人：打开后才缓缓移动过去）。
-       垂直保持 CSS smooth（距离小已验证）；水平用 eased progress 插值（V34FIX9 恢复）。 */
+    var m=doc.scrollHeight-window.innerHeight;
+    if(m>0){
+      var t=Math.min(sy,m);
+      if(Math.abs(t-(window.scrollY||doc.scrollTop))>1) doc.scrollTop=t;
+    }
+    /* V34FIX9 · 水平跟随：按 B 展开补间的 eased progress 把 scrollLeft 从 startSL
+       平滑插值到 sx（与卡片宽度动画同一节奏，视口胶片式左右滑动）。
+       sx 是「全折叠布局」的最终目标（V34FIX4，不卡左边）；动画中 A 变宽时
+       scrollWidth 变大，clamp 到当前上限，A 收窄后最终精确落位 sx。 */
     var prog=null;
     anims.forEach(function(an){
       if(an.playState==='running'||an.playState==='pending'){
@@ -1283,12 +1262,9 @@ function expandCard(card){
       if(allDone()) tail++;
       requestAnimationFrame(follow);
     }else{
-      /* 收尾：恢复 scrollBehavior + 移除锚定抑制 + 强制精确到位（剩余微调无感） */
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
       doc.style.scrollBehavior=prevSB;
-      doc.scrollTop=sy;
-      stage.scrollLeft=sx;
     }
   }
   requestAnimationFrame(follow);
@@ -1385,7 +1361,7 @@ function collapseCard(card){
   var animA=card.animate(
     [{width:aW, maxHeight:aH, transform:'scale(1) translateY(0)', opacity:1},
      {width:fW, maxHeight:fHvis, transform:'scale(.95) translateY(2px)', opacity:.58}],
-    {duration:500, easing:'cubic-bezier(.3,.1,.25,1)'   /* V34FIX26 · 前段平缓：缩小匀速，maxScroll 每帧变化小 → scrollY 钳制平滑无跳（主人：跳变是因为缩小） */, fill:'forwards'}
+    {duration:500, easing:'cubic-bezier(.16,1,.3,1)', fill:'forwards'}
   );
   animA.onfinish=function(){
     var yKeep=(window.scrollY||doc.scrollTop);           /* V34FIX13 · 防结尾闪跳 */
@@ -1400,19 +1376,25 @@ function collapseCard(card){
   var startY=yBefore;
   var startSL=stage.scrollLeft;
   var tail=0;
-  /* V34FIX32 · 滚动彻底改为「CSS smooth + 一次赋值」（同 expandCard）：
-     浏览器原生平滑滚动（合成器驱动，不卡不掉帧），与收起动画并行；
-     收尾强制微调到位（剩余几 px 无感）。逐帧插值/限幅全部作废。 */
-  doc.style.scrollBehavior='smooth';   /* 垂直：CSS smooth 一次赋值 */
-  doc.scrollTop=syFold;
-  /* 水平：不用 CSS smooth，由 follow 按 progress 插值 */
   function follow(){
-    /* V34FIX33 · 水平逐帧插值（同 expandCard，见上）；垂直保持 CSS smooth */
+    var m=doc.scrollHeight-window.innerHeight;
+    var y=window.scrollY||doc.scrollTop;
     var pr=0;
+    /* ⚠️ getComputedTiming 在 Animation 上不存在（undefined），必须是 effect 的方法。
+       ⚠️⚠️ V34FIX14 · 动画 finished/idle（onfinish 里 cancel 后）时 progress 会归 0，
+       若继续用 progress 插值，target 被拉回 startY/startSL（展开位置）→ scroll 闪跳
+       约 50ms（实测 c496~c545 cxDiff -241.9 / scrollY 271，主人看到「卡一下」）。
+       动画一停就强制 pr=1（插值锁定终点），绝不用 cancel 后的归零 progress。 */
     if(animA.playState==='running'||animA.playState==='pending'){
       try{ pr=animA.effect.getComputedTiming().progress; }catch(e){ pr=1; }
       if(!(pr>=0)) pr=1;
     }else{ pr=1; }
+    /* V34FIX12 · 垂直居中插值（取整防 scrollY 取整阈值陷阱） */
+    var target=Math.round(startY+(syFold-startY)*pr);
+    if(m>0 && target>m) target=m;                        /* clamp：不滚过最终 maxScroll */
+    if(target<0) target=0;
+    if(Math.abs(y-target)>0.5) doc.scrollTop=target;
+    /* V34FIX13 · 水平居中插值（与展开 sx 同节奏，视口胶片式滑动到折叠居中位） */
     var maxSL=stage.scrollWidth-stage.clientWidth;
     var sl=Math.round(startSL+(sxFold-startSL)*pr);
     if(sl>maxSL) sl=maxSL;
@@ -1422,12 +1404,18 @@ function collapseCard(card){
       if(animA.playState!=='running'&&animA.playState!=='pending') tail++;
       requestAnimationFrame(follow);
     }else{
-      /* 收尾：恢复 scrollBehavior + 移除锚定抑制 + 强制精确到位（剩余微调无感） */
+      /* 收尾最终校准：双轴都按最新几何落位（flex 微移时修正，无动画无跳变感） */
+      var m2=doc.scrollHeight-window.innerHeight;
+      var y2=window.scrollY||doc.scrollTop;
+      var syF2=Math.round(Math.max(0, card.getBoundingClientRect().top+y2+rFoldH/2-window.innerHeight/2));
+      if(m2>0 && syF2>m2) syF2=m2;
+      if(Math.abs((window.scrollY||doc.scrollTop)-syF2)>1) doc.scrollTop=syF2;
+      var maxSL2=stage.scrollWidth-stage.clientWidth;
+      var sl2=Math.max(0, Math.min(maxSL2, Math.round(card.offsetLeft+fWn/2-stage.clientWidth/2)));
+      if(Math.abs(sl2-stage.scrollLeft)>1) stage.scrollLeft=sl2;
       var as=document.getElementById('__cfv35_anchor_off');
       if(as) as.parentNode.removeChild(as);
       doc.style.scrollBehavior=prevSB;
-      doc.scrollTop=syFold;
-      stage.scrollLeft=sxFold;
       /* V34FIX19 · 收起完成且无任何展开卡时，恢复显示滚动字幕 */
       if(!document.querySelector('.hcard.active')) document.body.classList.remove('film-open');
     }
