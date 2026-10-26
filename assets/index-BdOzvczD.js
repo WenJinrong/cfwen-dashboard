@@ -4900,7 +4900,7 @@ varying vec2 vArchiveProjectedAxis;
 `+l.vertexShader,l.vertexShader=l.vertexShader.replace("#include <begin_vertex>",`#include <begin_vertex>
 // 原设计的清除前沿是沿卡面对角线（decryption.ts 的 SCAN_FROM→SCAN_TO），而不是水平推进。
 // 对角方向 dy/dx = (3.24-0.5)/(1.98+1.6) ≈ 0.765，归一化到 0..1（x∈[-2.5,2.5] y∈[0,3.7]，极值差 7.525）。
-vArchiveHeight = clamp((position.y - 0.765 * position.x + 1.9125) / 7.525, 0.0, 1.0);`),l.fragmentShader=`varying float vArchiveHeight;
+vArchiveHeight = clamp((position.y + 0.765 * position.x + 1.9125) / 7.525, 0.0, 1.0);`),l.fragmentShader=`varying float vArchiveHeight;
 varying vec2 vArchiveProjectedAxis;
 `+ME+l.fragmentShader,l.vertexShader=l.vertexShader.replace("#include <project_vertex>",`#include <project_vertex>
 vArchiveProjectedAxis = 1.85 * vec2(projectionMatrix[0][0] * modelViewMatrix[1][0], projectionMatrix[1][1] * modelViewMatrix[1][1]) / max(0.0001, abs(mvPosition.z));`),l.fragmentShader=l.fragmentShader.replace("#include <transmission_pars_fragment>",EE+`
